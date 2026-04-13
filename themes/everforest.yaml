@@ -1,0 +1,33 @@
+name: Everforest
+
+terminal:
+  background: "#2d353b"
+  foreground: "#d3c6aa"
+  cursor: "#d3c6aa"
+  selectionBackground: "#475258"
+  black: "#343f44"
+  red: "#e67e80"
+  green: "#a7c080"
+  yellow: "#dbbc7f"
+  blue: "#7fbbb3"
+  magenta: "#d699b6"
+  cyan: "#83c092"
+  white: "#d3c6aa"
+  brightBlack: "#5c6a72"
+  brightRed: "#e67e80"
+  brightGreen: "#a7c080"
+  brightYellow: "#dbbc7f"
+  brightBlue: "#7fbbb3"
+  brightMagenta: "#d699b6"
+  brightCyan: "#83c092"
+  brightWhite: "#edeada"
+
+ui:
+  bg: "#2d353b"
+  bgAlt: "#272e33"
+  border: "#3d484d"
+  text: "#d3c6aa"
+  textMuted: "#d9e5dc"
+  textFaint: "#acb6aa"
+  accent: "#a7c080"
+  sidebarActive: "#3d484d"

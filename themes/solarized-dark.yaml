@@ -1,0 +1,33 @@
+name: Solarized Dark
+
+terminal:
+  background: "#002b36"
+  foreground: "#839496"
+  cursor: "#839496"
+  selectionBackground: "#073642"
+  black: "#073642"
+  red: "#dc322f"
+  green: "#859900"
+  yellow: "#b58900"
+  blue: "#268bd2"
+  magenta: "#d33682"
+  cyan: "#2aa198"
+  white: "#eee8d5"
+  brightBlack: "#586e75"
+  brightRed: "#cb4b16"
+  brightGreen: "#859900"
+  brightYellow: "#b58900"
+  brightBlue: "#268bd2"
+  brightMagenta: "#6c71c4"
+  brightCyan: "#2aa198"
+  brightWhite: "#fdf6e3"
+
+ui:
+  bg: "#002b36"
+  bgAlt: "#00212b"
+  border: "#073642"
+  text: "#839496"
+  textMuted: "#a1b7bf"
+  textFaint: "#8aa0a7"
+  accent: "#268bd2"
+  sidebarActive: "#073642"

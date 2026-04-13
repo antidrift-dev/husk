@@ -1,0 +1,33 @@
+name: Catppuccin Macchiato
+
+terminal:
+  background: "#24273a"
+  foreground: "#cad3f5"
+  cursor: "#f4dbd6"
+  selectionBackground: "#494d64"
+  black: "#494d64"
+  red: "#ed8796"
+  green: "#a6da95"
+  yellow: "#eed49f"
+  blue: "#8aadf4"
+  magenta: "#f5bde6"
+  cyan: "#8bd5ca"
+  white: "#b8c0e0"
+  brightBlack: "#5b6078"
+  brightRed: "#ed8796"
+  brightGreen: "#a6da95"
+  brightYellow: "#eed49f"
+  brightBlue: "#8aadf4"
+  brightMagenta: "#f5bde6"
+  brightCyan: "#8bd5ca"
+  brightWhite: "#a5adcb"
+
+ui:
+  bg: "#24273a"
+  bgAlt: "#1e2030"
+  border: "#363a4f"
+  text: "#cad3f5"
+  textMuted: "#cfd6f3"
+  textFaint: "#a0a5bf"
+  accent: "#8aadf4"
+  sidebarActive: "#2e3247"

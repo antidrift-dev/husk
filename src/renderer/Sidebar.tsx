@@ -12,37 +12,43 @@ interface ContextMenu {
   y: number;
 }
 
-const PROCESS_COLORS: Record<string, string> = {
-  claude: "#e78a4e",
-  codex: "#4a9eff",
-  vim: "#019833",
-  nvim: "#019833",
-  node: "#68a063",
-  python: "#3776ab",
-  python3: "#3776ab",
-  git: "#f05032",
-  docker: "#2496ed",
-  npm: "#cb3837",
-  cargo: "#dea584",
-  ruby: "#cc342d",
-  go: "#00add8",
-  htop: "#8bc34a",
-  top: "#8bc34a",
-  ssh: "#9c27b0",
+// Fallback palette mappings for processes without an explicit color
+const PROCESS_COLOR_MAP: Record<string, string> = {
+  aider: "cyan",
+  vim: "green",
+  nvim: "green",
+  node: "green",
+  python: "blue",
+  python3: "blue",
+  git: "red",
+  npm: "red",
+  cargo: "yellow",
+  ruby: "red",
+  go: "cyan",
+  htop: "green",
+  top: "green",
+  ssh: "magenta",
 };
 
-const DEFAULT_ACTIVE = "#313244";
+function getProcessColor(process: string | undefined, theme: any, processColors: Record<string, string>): string | null {
+  if (!process) return null;
+  const lower = process.toLowerCase();
+  if (processColors[lower]) return processColors[lower];
+  const colorKey = PROCESS_COLOR_MAP[lower];
+  if (!colorKey) return null;
+  return theme.terminal[colorKey] || null;
+}
 
-function getSessionColor(process: string | undefined, isActive: boolean, defaultActive: string = DEFAULT_ACTIVE): string {
-  const color = process ? PROCESS_COLORS[process.toLowerCase()] : null;
+function getSessionColor(process: string | undefined, isActive: boolean, defaultActive: string, theme: any, processColors: Record<string, string>): string {
+  const color = getProcessColor(process, theme, processColors);
   if (!color) return isActive ? defaultActive : "rgba(255,255,255,0.03)";
   return color + (isActive ? "40" : "20");
 }
 
-function getSessionBorder(process: string | undefined, isActive: boolean): string {
-  const color = process ? PROCESS_COLORS[process.toLowerCase()] : null;
-  if (!color) return isActive ? `2px solid #585b70` : "2px solid transparent";
-  return `2px solid ${color}${isActive ? "" : "80"}`; // full opacity active, 50% inactive
+function getSessionBorder(process: string | undefined, isActive: boolean, theme: any, processColors: Record<string, string>): string {
+  const color = getProcessColor(process, theme, processColors);
+  if (!color) return isActive ? `2px solid ${theme.ui.textFaint}` : "2px solid transparent";
+  return `2px solid ${color}${isActive ? "" : "80"}`;
 }
 
 interface Props {
@@ -52,26 +58,32 @@ interface Props {
   onSelect: (id: string) => void;
   onRename: (id: string, label: string) => void;
   onClose: (id: string) => void;
+  onPopOut: (id: string) => void;
+  onReorder: (fromIndex: number, toIndex: number) => void;
   width: number;
   sessionProcesses: Record<string, string>;
+  caffeinatedSessions: Record<string, boolean>;
   editingSessionId: string | null;
   onEditingDone: () => void;
   initialUse24h: boolean;
+  processColors: Record<string, string>;
 }
 
-export default function Sidebar({ sessions, activeId, onNew, onSelect, onRename, onClose, width, sessionProcesses, editingSessionId, onEditingDone, initialUse24h }: Props) {
+export default function Sidebar({ sessions, activeId, onNew, onSelect, onRename, onClose, onPopOut, onReorder, width, sessionProcesses, caffeinatedSessions, editingSessionId, onEditingDone, initialUse24h, processColors }: Props) {
   const { theme } = useTheme();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [use24h, setUse24h] = useState(initialUse24h);
   const formatTime = (h24: boolean) => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: !h24 });
   const [time, setTime] = useState(() => formatTime(true));
   const [editValue, setEditValue] = useState("");
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [menu, setMenu] = useState<ContextMenu | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (editingId) {
-      setTimeout(() => inputRef.current?.focus(), 50);
+      setTimeout(() => { inputRef.current?.focus(); inputRef.current?.select(); }, 50);
     }
   }, [editingId]);
 
@@ -147,17 +159,41 @@ export default function Sidebar({ sessions, activeId, onNew, onSelect, onRename,
       {sessions.map((s, i) => (
         <div
           key={s.id}
+          draggable={editingId !== s.id}
           onClick={() => onSelect(s.id)}
           onContextMenu={(e) => handleContextMenu(e, s)}
+          onDragStart={(e) => {
+            setDragId(s.id);
+            e.dataTransfer.effectAllowed = "move";
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            setDragOverId(s.id);
+          }}
+          onDragLeave={() => setDragOverId(null)}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (dragId && dragId !== s.id) {
+              const fromIdx = sessions.findIndex((x) => x.id === dragId);
+              const toIdx = sessions.findIndex((x) => x.id === s.id);
+              if (fromIdx !== -1 && toIdx !== -1) onReorder(fromIdx, toIdx);
+            }
+            setDragId(null);
+            setDragOverId(null);
+          }}
+          onDragEnd={() => { setDragId(null); setDragOverId(null); }}
           style={{
             padding: "16px 8px",
             borderRadius: 6,
-            cursor: "pointer",
-            background: getSessionColor(sessionProcesses[s.id], s.id === activeId, theme.ui.sidebarActive),
-            borderLeft: getSessionBorder(sessionProcesses[s.id], s.id === activeId),
+            cursor: dragId ? "grabbing" : "pointer",
+            background: getSessionColor(sessionProcesses[s.id], s.id === activeId, theme.ui.sidebarActive, theme, processColors),
+            borderLeft: getSessionBorder(sessionProcesses[s.id], s.id === activeId, theme, processColors),
+            borderTop: dragOverId === s.id && dragId !== s.id ? `2px solid ${theme.ui.accent}` : "2px solid transparent",
             boxShadow: s.id === activeId
               ? `0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)`
               : `0 1px 3px rgba(0,0,0,0.15)`,
+            opacity: dragId === s.id ? 0.4 : 1,
             transition: "all 0.15s ease",
             fontSize: 13,
             fontWeight: s.id === activeId ? 600 : 500,
@@ -200,13 +236,20 @@ export default function Sidebar({ sessions, activeId, onNew, onSelect, onRename,
                 border: `1px solid ${theme.ui.accent}`,
                 borderRadius: 2,
                 fontSize: 11,
-                padding: "2px 4px",
+                padding: "4px",
                 textAlign: "center",
                 outline: "none",
               }}
             />
           ) : (
-            s.label
+            <>
+              {s.label}
+              {caffeinatedSessions[s.id] && (
+                <div style={{ fontSize: 9, color: theme.ui.textMuted, marginTop: 4 }}>
+                  caffeinated
+                </div>
+              )}
+            </>
           )}
         </div>
       ))}
@@ -233,7 +276,7 @@ export default function Sidebar({ sessions, activeId, onNew, onSelect, onRename,
 
       <div
         style={{
-          height: 26,
+          height: 24,
           fontSize: 11,
           color: theme.ui.textMuted,
           display: "flex",
@@ -266,7 +309,7 @@ export default function Sidebar({ sessions, activeId, onNew, onSelect, onRename,
           <div
             onClick={handleMenuRename}
             style={{
-              padding: "6px 12px",
+              padding: "8px 12px",
               borderRadius: 4,
               cursor: "pointer",
               fontSize: 11,
@@ -278,9 +321,23 @@ export default function Sidebar({ sessions, activeId, onNew, onSelect, onRename,
             Rename
           </div>
           <div
+            onClick={() => { if (menu) { onPopOut(menu.sessionId); setMenu(null); } }}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 4,
+              cursor: "pointer",
+              fontSize: 11,
+              color: theme.ui.text,
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = theme.ui.border)}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            Pop Out to Window
+          </div>
+          <div
             onClick={handleMenuClose}
             style={{
-              padding: "6px 12px",
+              padding: "8px 12px",
               borderRadius: 4,
               cursor: "pointer",
               fontSize: 11,

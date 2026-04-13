@@ -1,0 +1,72 @@
+name: Performance Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  perf:
+    name: Perf (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Linux display deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            xvfb \
+            libgtk-3-0 libgbm1 libnss3 libasound2 libxss1 \
+            libxcomposite1 libxrandr2 libxdamage1 libxfixes3 \
+            libxi6 libxtst6 libpango1.0-0 libcairo2 \
+            libatk1.0-0 libatk-bridge2.0-0 libdrm2 libxkbcommon0
+
+      # Build without bumping the build number (no tsx scripts/bump-build.ts)
+      - name: Build (main)
+        run: npm run build:main
+
+      - name: Build (renderer)
+        run: npm run build:renderer
+
+      # ── Unit perf tests (platform-agnostic, no display needed) ──────────────
+      - name: Unit performance tests
+        run: npm run test:perf
+
+      # ── E2E perf tests (full Electron app) ──────────────────────────────────
+      - name: E2E performance tests (Linux — Xvfb)
+        if: runner.os == 'Linux'
+        run: >
+          xvfb-run --auto-servernum
+          --server-args='-screen 0 1280x720x24 -ac'
+          npm run test:e2e:perf
+        env:
+          ELECTRON_DISABLE_SANDBOX: "1"
+
+      - name: E2E performance tests (macOS / Windows)
+        if: runner.os != 'Linux'
+        run: npm run test:e2e:perf
+
+      # ── Artifacts ────────────────────────────────────────────────────────────
+      - name: Upload perf results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-results-${{ matrix.os }}
+          path: perf-results.json
+          if-no-files-found: ignore

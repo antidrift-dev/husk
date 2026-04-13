@@ -1,0 +1,33 @@
+name: Solarized Light
+
+terminal:
+  background: "#fdf6e3"
+  foreground: "#657b83"
+  cursor: "#657b83"
+  selectionBackground: "#eee8d5"
+  black: "#073642"
+  red: "#dc322f"
+  green: "#859900"
+  yellow: "#b58900"
+  blue: "#268bd2"
+  magenta: "#d33682"
+  cyan: "#2aa198"
+  white: "#eee8d5"
+  brightBlack: "#586e75"
+  brightRed: "#cb4b16"
+  brightGreen: "#859900"
+  brightYellow: "#b58900"
+  brightBlue: "#268bd2"
+  brightMagenta: "#6c71c4"
+  brightCyan: "#2aa198"
+  brightWhite: "#fdf6e3"
+
+ui:
+  bg: "#fdf6e3"
+  bgAlt: "#eee8d5"
+  border: "#d6cdb7"
+  text: "#657b83"
+  textMuted: "#5b6c6e"
+  textFaint: "#758383"
+  accent: "#268bd2"
+  sidebarActive: "#eee8d5"

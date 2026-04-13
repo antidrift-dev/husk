@@ -1,0 +1,33 @@
+name: Dracula
+
+terminal:
+  background: "#282a36"
+  foreground: "#f8f8f2"
+  cursor: "#f8f8f2"
+  selectionBackground: "#44475a"
+  black: "#21222c"
+  red: "#ff5555"
+  green: "#50fa7b"
+  yellow: "#f1fa8c"
+  blue: "#bd93f9"
+  magenta: "#ff79c6"
+  cyan: "#8be9fd"
+  white: "#f8f8f2"
+  brightBlack: "#6272a4"
+  brightRed: "#ff6e6e"
+  brightGreen: "#69ff94"
+  brightYellow: "#ffffa5"
+  brightBlue: "#d6acff"
+  brightMagenta: "#ff92df"
+  brightCyan: "#a4ffff"
+  brightWhite: "#ffffff"
+
+ui:
+  bg: "#282a36"
+  bgAlt: "#1e1f29"
+  border: "#44475a"
+  text: "#f8f8f2"
+  textMuted: "#bfd0fb"
+  textFaint: "#94a4d6"
+  accent: "#bd93f9"
+  sidebarActive: "#353849"

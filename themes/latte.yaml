@@ -1,0 +1,33 @@
+name: Latte
+
+terminal:
+  background: "#eff1f5"
+  foreground: "#4c4f69"
+  cursor: "#dc8a78"
+  selectionBackground: "#acb0be"
+  black: "#5c5f77"
+  red: "#d20f39"
+  green: "#40a02b"
+  yellow: "#df8e1d"
+  blue: "#1e66f5"
+  magenta: "#ea76cb"
+  cyan: "#179299"
+  white: "#acb0be"
+  brightBlack: "#6c6f85"
+  brightRed: "#d20f39"
+  brightGreen: "#40a02b"
+  brightYellow: "#df8e1d"
+  brightBlue: "#1e66f5"
+  brightMagenta: "#ea76cb"
+  brightCyan: "#179299"
+  brightWhite: "#bcc0cc"
+
+ui:
+  bg: "#eff1f5"
+  bgAlt: "#dce0e8"
+  border: "#ccd0da"
+  text: "#4c4f69"
+  textMuted: "#44475d"
+  textFaint: "#7e8292"
+  accent: "#1e66f5"
+  sidebarActive: "#bcc0cc"

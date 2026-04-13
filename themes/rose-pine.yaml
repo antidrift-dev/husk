@@ -1,0 +1,33 @@
+name: Rosé Pine
+
+terminal:
+  background: "#191724"
+  foreground: "#e0def4"
+  cursor: "#524f67"
+  selectionBackground: "#2a283e"
+  black: "#26233a"
+  red: "#eb6f92"
+  green: "#9ccfd8"
+  yellow: "#f6c177"
+  blue: "#31748f"
+  magenta: "#c4a7e7"
+  cyan: "#9ccfd8"
+  white: "#e0def4"
+  brightBlack: "#6e6a86"
+  brightRed: "#eb6f92"
+  brightGreen: "#9ccfd8"
+  brightYellow: "#f6c177"
+  brightBlue: "#31748f"
+  brightMagenta: "#c4a7e7"
+  brightCyan: "#ebbcba"
+  brightWhite: "#e0def4"
+
+ui:
+  bg: "#191724"
+  bgAlt: "#1f1d2e"
+  border: "#26233a"
+  text: "#e0def4"
+  textMuted: "#ccc8e6"
+  textFaint: "#a09cb8"
+  accent: "#c4a7e7"
+  sidebarActive: "#2a283e"

@@ -1,3 +1,16 @@
 node_modules/
 dist/
 .DS_Store
+
+# Build output
+release/
+main.js
+
+# Test output
+coverage/
+test-results/
+
+# Perf / bench data
+perf-results.json
+bench-runs/
+bench-history.json

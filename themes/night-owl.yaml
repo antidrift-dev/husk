@@ -1,0 +1,33 @@
+name: Night Owl
+
+terminal:
+  background: "#011627"
+  foreground: "#d6deeb"
+  cursor: "#80a4c2"
+  selectionBackground: "#1d3b53"
+  black: "#011627"
+  red: "#ef5350"
+  green: "#22da6e"
+  yellow: "#addb67"
+  blue: "#82aaff"
+  magenta: "#c792ea"
+  cyan: "#21c7a8"
+  white: "#d6deeb"
+  brightBlack: "#575656"
+  brightRed: "#ef5350"
+  brightGreen: "#22da6e"
+  brightYellow: "#ffeb95"
+  brightBlue: "#82aaff"
+  brightMagenta: "#c792ea"
+  brightCyan: "#7fdbca"
+  brightWhite: "#ffffff"
+
+ui:
+  bg: "#011627"
+  bgAlt: "#001122"
+  border: "#122d42"
+  text: "#d6deeb"
+  textMuted: "#bbe6ff"
+  textFaint: "#91b0c9"
+  accent: "#82aaff"
+  sidebarActive: "#0b253a"

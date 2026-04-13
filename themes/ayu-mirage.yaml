@@ -1,0 +1,33 @@
+name: Ayu Mirage
+
+terminal:
+  background: "#1f2430"
+  foreground: "#cbccc6"
+  cursor: "#ffcc66"
+  selectionBackground: "#33415e"
+  black: "#191e2a"
+  red: "#ff3333"
+  green: "#bae67e"
+  yellow: "#ffd580"
+  blue: "#5ccfe6"
+  magenta: "#d4bfff"
+  cyan: "#95e6cb"
+  white: "#c7c7c7"
+  brightBlack: "#686868"
+  brightRed: "#f27983"
+  brightGreen: "#a6cc70"
+  brightYellow: "#ffcc66"
+  brightBlue: "#73d0ff"
+  brightMagenta: "#d4bfff"
+  brightCyan: "#95e6cb"
+  brightWhite: "#f3f4f5"
+
+ui:
+  bg: "#1f2430"
+  bgAlt: "#191e2a"
+  border: "#33415e"
+  text: "#cbccc6"
+  textMuted: "#c6cdd7"
+  textFaint: "#8e95a2"
+  accent: "#ffcc66"
+  sidebarActive: "#2a3040"
