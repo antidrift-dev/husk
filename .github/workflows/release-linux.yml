@@ -25,11 +25,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Set version from tag
+        run: |
+          TAG=${{ github.event.release.tag_name || inputs.tag }}
+          VERSION=${TAG#v}
+          BUILD=$(echo $VERSION | cut -d. -f3)
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package.json')); p.build.buildVersion=String($BUILD); fs.writeFileSync('package.json', JSON.stringify(p,null,2))"
+
       - name: Install Linux build deps
         run: sudo apt-get install -y rpm
 
       - name: Build
-        run: npm run dist -- --linux --x64
+        run: npm run build:main && npm run build:renderer && npx electron-builder --linux --x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
