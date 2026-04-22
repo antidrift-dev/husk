@@ -13,6 +13,7 @@
 
 import Database from "better-sqlite3";
 import fs from "fs";
+import readline from "readline";
 import path from "path";
 import os from "os";
 
@@ -36,6 +37,7 @@ interface CacheEntry {
 }
 
 const cache = new Map<string, CacheEntry>();
+const MAX_CACHE = 200;
 
 function queryThread(cwd: string): { rolloutPath: string; model: string } | null {
   try {
@@ -51,56 +53,53 @@ function queryThread(cwd: string): { rolloutPath: string; model: string } | null
   }
 }
 
-// Walk the rollout JSONL once for both context-window size and the last
-// token_count event. Returns partial info (no model / contextWindow).
-function parseRollout(filePath: string): {
-  info: Omit<CodexContextInfo, "model" | "contextWindow">;
-  contextWindow: number;
-} | null {
-  let content: string;
-  try {
-    content = fs.readFileSync(filePath, "utf8");
-  } catch {
-    return null;
-  }
-
-  const lines = content.split("\n");
-  let contextWindow = 200_000;
-  let lastInfo: Omit<CodexContextInfo, "model" | "contextWindow"> | null = null;
-
-  for (const line of lines) {
-    if (!line || !line.includes('"type"')) continue;
+// Stream the rollout JSONL line-by-line for context-window size and last token_count.
+function parseRollout(filePath: string): Promise<{ info: Omit<CodexContextInfo, "model" | "contextWindow">; contextWindow: number } | null> {
+  return new Promise((resolve) => {
+    let stream: fs.ReadStream;
     try {
-      const obj = JSON.parse(line);
-      if (obj?.type !== "event_msg") continue;
-      const payload = obj.payload;
-      if (!payload?.type) continue;
-
-      if (payload.type === "task_started" && typeof payload.model_context_window === "number") {
-        contextWindow = payload.model_context_window;
-      }
-
-      if (payload.type === "token_count" && payload.info?.last_token_usage) {
-        const last = payload.info.last_token_usage;
-        const inputTokens: number = last.input_tokens ?? 0;
-        if (inputTokens === 0) continue;
-        const cachedTokens: number = last.cached_input_tokens ?? 0;
-        lastInfo = {
-          tokens: inputTokens,
-          inputTokens: inputTokens - cachedTokens,
-          cacheReadTokens: cachedTokens,
-          cacheCreationTokens: 0,
-          outputTokens: last.output_tokens ?? 0,
-        };
-      }
-    } catch {}
-  }
-
-  if (!lastInfo) return null;
-  return { info: lastInfo, contextWindow };
+      stream = fs.createReadStream(filePath, { encoding: "utf8" });
+    } catch {
+      resolve(null);
+      return;
+    }
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    let contextWindow = 200_000;
+    let lastInfo: Omit<CodexContextInfo, "model" | "contextWindow"> | null = null;
+    rl.on("line", (line) => {
+      if (!line || !line.includes('"type"')) return;
+      try {
+        const obj = JSON.parse(line);
+        if (obj?.type !== "event_msg") return;
+        const payload = obj.payload;
+        if (!payload?.type) return;
+        if (payload.type === "task_started" && typeof payload.model_context_window === "number") {
+          contextWindow = payload.model_context_window;
+        }
+        if (payload.type === "token_count" && payload.info?.last_token_usage) {
+          const last = payload.info.last_token_usage;
+          const inputTokens: number = last.input_tokens ?? 0;
+          if (inputTokens === 0) return;
+          const cachedTokens: number = last.cached_input_tokens ?? 0;
+          lastInfo = {
+            tokens: inputTokens,
+            inputTokens: inputTokens - cachedTokens,
+            cacheReadTokens: cachedTokens,
+            cacheCreationTokens: 0,
+            outputTokens: last.output_tokens ?? 0,
+          };
+        }
+      } catch {}
+    });
+    rl.on("close", () => {
+      if (!lastInfo) { resolve(null); return; }
+      resolve({ info: lastInfo, contextWindow });
+    });
+    rl.on("error", () => resolve(null));
+  });
 }
 
-export function getCodexContextForCwd(cwd: string): CodexContextInfo | null {
+export async function getCodexContextForCwd(cwd: string): Promise<CodexContextInfo | null> {
   if (!cwd) return null;
   if (!fs.existsSync(CODEX_DB)) return null;
 
@@ -121,11 +120,12 @@ export function getCodexContextForCwd(cwd: string): CodexContextInfo | null {
     info = cached.info;
     contextWindow = cached.contextWindow;
   } else {
-    const parsed = parseRollout(rolloutPath);
+    const parsed = await parseRollout(rolloutPath);
     if (!parsed) return null;
     info = parsed.info;
     contextWindow = parsed.contextWindow;
     cache.set(rolloutPath, { mtimeMs: stat.mtimeMs, size: stat.size, info, contextWindow });
+    if (cache.size > MAX_CACHE) cache.clear();
   }
 
   return { ...info, model, contextWindow };

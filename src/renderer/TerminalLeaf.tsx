@@ -170,8 +170,25 @@ export default function TerminalLeaf({ sessionId, paneId, focused, showFocusBord
       });
 
       // Output listener
+      // Force-flush synchronized output mode after every write. Claude Code (Ink)
+      // sends ?2026h/?2026l rapidly (~14ms cycles). xterm.js queues the ?2026l
+      // flush to the next rAF (~16ms), but Ink re-enables ?2026h before that frame
+      // fires — content stays buffered forever. Stripping the sequences helps but
+      // fails when they're split across IPC batches. The safest fix: after each
+      // write, forcibly disable sync mode via xterm internals and force a refresh.
+      const flushSyncOutput = () => {
+        const modes = (term as any)._core?.coreService?.decPrivateModes;
+        if (modes?.synchronizedOutput) {
+          modes.synchronizedOutput = false;
+          term.refresh(0, term.rows - 1);
+        }
+      };
+      const SYNC_OUTPUT_RE = /\x1b\[\?2026(\$p|[hl])/g;
       const cleanupOutput = window.husk.onPaneOutput((sid, pid, data) => {
-        if (sid === sessionId && pid === paneId) term.write(data);
+        if (sid === sessionId && pid === paneId) {
+          console.log(`[husk] pane:output sid=${sid} pid=${pid} bytes=${data.length} preview=${JSON.stringify(data.slice(0, 80))}`);
+          term.write(data.replace(SYNC_OUTPUT_RE, ""), flushSyncOutput);
+        }
       });
 
       const isFirstTime = await window.husk.subscribePane(sessionId, paneId);

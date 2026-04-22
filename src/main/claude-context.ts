@@ -13,6 +13,7 @@
 // *runtime* model ID, which preserves the `[1m]` suffix.
 
 import fs from "fs";
+import readline from "readline";
 import path from "path";
 import os from "os";
 
@@ -32,8 +33,9 @@ interface CacheEntry {
   info: ClaudeContextInfo;
 }
 
-// Cache by file path; invalidate when mtime or size changes.
+// Cache by file path; invalidate when mtime or size changes. FIFO eviction at 200 entries.
 const cache = new Map<string, CacheEntry>();
+const MAX_CACHE = 200;
 
 const PROJECTS_ROOT = path.join(os.homedir(), ".claude", "projects");
 const CLAUDE_CONFIG_PATH = path.join(os.homedir(), ".claude.json");
@@ -103,64 +105,50 @@ function findLatestSessionFile(projectDir: string): { path: string; mtimeMs: num
   return best;
 }
 
-// Scan the file for the latest assistant usage entry, plus track the max input
-// context ever observed in this session (used to pick the denominator: a session
-// that ever crossed 200k must be on the 1M-context tier).
-//
-// We read the whole file (typical sessions are a few MB at most) and split
-// rather than doing true reverse streaming — negligible benefit at this size.
-function parseLatestUsage(filePath: string): ClaudeContextInfo | null {
-  let content: string;
-  try {
-    content = fs.readFileSync(filePath, "utf8");
-  } catch {
-    return null;
-  }
-  const lines = content.split("\n");
-
-  // First pass: scan all lines to find the max input-side token count.
-  let maxObserved = 0;
-  for (const line of lines) {
-    if (!line || !line.includes('"usage"')) continue;
+// Stream the JSONL file line-by-line, tracking the last usage entry and the
+// max tokens seen (used to detect the 1M-context tier). Single forward pass —
+// no need to buffer the whole file in memory.
+function parseLatestUsage(filePath: string): Promise<ClaudeContextInfo | null> {
+  return new Promise((resolve) => {
+    let stream: fs.ReadStream;
     try {
-      const obj = JSON.parse(line);
-      const usage = obj?.message?.usage;
-      if (!usage) continue;
-      const total =
-        (usage.input_tokens || 0) +
-        (usage.cache_creation_input_tokens || 0) +
-        (usage.cache_read_input_tokens || 0);
-      if (total > maxObserved) maxObserved = total;
-    } catch {}
-  }
-
-  // Second pass: find the most recent assistant entry with usage.
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i];
-    if (!line || !line.includes('"usage"')) continue;
-    try {
-      const obj = JSON.parse(line);
-      const usage = obj?.message?.usage;
-      if (!usage) continue;
-      const inputTokens = usage.input_tokens || 0;
-      const cacheReadTokens = usage.cache_read_input_tokens || 0;
-      const cacheCreationTokens = usage.cache_creation_input_tokens || 0;
-      const outputTokens = usage.output_tokens || 0;
-      const tokens = inputTokens + cacheReadTokens + cacheCreationTokens;
-      if (tokens === 0) continue;
-      const contextWindow = maxObserved > 200_000 ? 1_000_000 : 200_000;
-      return {
-        tokens,
-        inputTokens,
-        cacheReadTokens,
-        cacheCreationTokens,
-        outputTokens,
-        model: obj?.message?.model || null,
-        contextWindow,
-      };
-    } catch {}
-  }
-  return null;
+      stream = fs.createReadStream(filePath, { encoding: "utf8" });
+    } catch {
+      resolve(null);
+      return;
+    }
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    let maxObserved = 0;
+    let last: ClaudeContextInfo | null = null;
+    rl.on("line", (line) => {
+      if (!line || !line.includes('"usage"')) return;
+      try {
+        const obj = JSON.parse(line);
+        const usage = obj?.message?.usage;
+        if (!usage) return;
+        const inputTokens = usage.input_tokens || 0;
+        const cacheReadTokens = usage.cache_read_input_tokens || 0;
+        const cacheCreationTokens = usage.cache_creation_input_tokens || 0;
+        const tokens = inputTokens + cacheReadTokens + cacheCreationTokens;
+        if (tokens === 0) return;
+        if (tokens > maxObserved) maxObserved = tokens;
+        last = {
+          tokens,
+          inputTokens,
+          cacheReadTokens,
+          cacheCreationTokens,
+          outputTokens: usage.output_tokens || 0,
+          model: obj?.message?.model || null,
+          contextWindow: 200_000,
+        };
+      } catch {}
+    });
+    rl.on("close", () => {
+      if (!last) { resolve(null); return; }
+      resolve({ ...last, contextWindow: maxObserved > 200_000 ? 1_000_000 : 200_000 });
+    });
+    rl.on("error", () => resolve(null));
+  });
 }
 
 // Resolve the Claude project root for a given shell CWD.
@@ -180,7 +168,7 @@ function resolveProjectDir(cwd: string): { projectDir: string; projectCwd: strin
   }
 }
 
-export function getClaudeContextForCwd(cwd: string): ClaudeContextInfo | null {
+export async function getClaudeContextForCwd(cwd: string): Promise<ClaudeContextInfo | null> {
   if (!cwd) return null;
   const resolved = resolveProjectDir(cwd);
   if (!resolved) return null;
@@ -194,9 +182,10 @@ export function getClaudeContextForCwd(cwd: string): ClaudeContextInfo | null {
   if (cached && cached.mtimeMs === latest.mtimeMs && cached.size === latest.size) {
     info = cached.info;
   } else {
-    info = parseLatestUsage(latest.path);
+    info = await parseLatestUsage(latest.path);
     if (!info) return null;
     cache.set(latest.path, { mtimeMs: latest.mtimeMs, size: latest.size, info });
+    if (cache.size > MAX_CACHE) cache.clear();
   }
 
   // Resolve the context window every call: ~/.claude.json can change

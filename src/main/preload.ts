@@ -77,6 +77,9 @@ contextBridge.exposeInMainWorld("husk", {
   isCaffeinated: (id: string) =>
     ipcRenderer.invoke("session:caffeinated", id) as Promise<boolean>,
 
+  notifyProcessComplete: (sessionId: string, label: string, procName: string, duration: number) =>
+    ipcRenderer.send("session:proc-notify", sessionId, label, procName, duration),
+
   // UI state
   saveSidebarWidth: (width: number) =>
     ipcRenderer.invoke("ui:save-sidebar-width", width),

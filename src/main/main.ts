@@ -178,6 +178,7 @@ function createWindow(overrideBounds?: { x: number; y: number; width: number; he
         // Hold mode — accumulate until subscribe
         const existing = holdBuffers.get(key) || "";
         holdBuffers.set(key, existing + data);
+        console.log(`[husk] HOLD (not subscribed) key=${key} bytes=${data.length}`);
       }
     });
   };
@@ -196,40 +197,14 @@ function createWindow(overrideBounds?: { x: number; y: number; width: number; he
   };
 
   sessions.onExit = (id: string) => {
+    (ctx as any).cleanupSessionState?.(id);
     if (!win.isDestroyed()) win.webContents.send("session:exited", id);
   };
 
   sessions.onPaneExit = (sessionId: string, paneId: string) => {
+    (ctx as any).cleanupPaneState?.(sessionId, paneId);
     if (!win.isDestroyed()) win.webContents.send("pane:exited", sessionId, paneId);
   };
-
-  // Notifications — long-running command detection
-  const shells = ["zsh", "bash", "fish", "sh", "pwsh", "powershell"];
-  const lastProcess = new Map<string, string>();
-  const processStartTime = new Map<string, number>();
-
-  const notifInterval = setInterval(async () => {
-    for (const [id, session] of sessions["sessions"] as Map<string, any>) {
-      const proc = await sessions.getForegroundProcess(id);
-      if (!proc) continue;
-      const prev = lastProcess.get(id);
-      if (prev && !shells.includes(prev) && shells.includes(proc)) {
-        const started = processStartTime.get(id);
-        const duration = started ? Math.round((Date.now() - started) / 1000) : 0;
-        if (duration > 5 && (!win.isFocused() || !win.isVisible())) {
-          const mins = Math.floor(duration / 60);
-          const secs = duration % 60;
-          const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-          new Notification({ title: `${session.label} — completed`, body: `${prev} finished (${timeStr})` }).show();
-          if (!win.isDestroyed()) win.webContents.send("session:notified", id);
-        }
-      }
-      if (prev !== proc) {
-        if (!shells.includes(proc)) processStartTime.set(id, Date.now());
-        lastProcess.set(id, proc);
-      }
-    }
-  }, 2000);
 
   // Shortcuts
   win.webContents.on("before-input-event", (e, input) => {
@@ -290,8 +265,6 @@ function createWindow(overrideBounds?: { x: number; y: number; width: number; he
     subscribedPanes.delete(key);
   };
   const cleanupSessionState = (sessionId: string) => {
-    lastProcess.delete(sessionId);
-    processStartTime.delete(sessionId);
     for (const key of [...ctx.paneListeners]) {
       if (key.startsWith(`${sessionId}:`)) {
         const paneId = key.slice(sessionId.length + 1);
@@ -303,7 +276,6 @@ function createWindow(overrideBounds?: { x: number; y: number; width: number; he
   (ctx as any).cleanupSessionState = cleanupSessionState;
 
   win.on("closed", () => {
-    clearInterval(notifInterval);
     menuSessionLabels.delete(win.id);
     sessions.destroyAll();
     windows.delete(win.id);
@@ -478,6 +450,18 @@ ipcMain.handle("pane:cwd", (e, sessionId: string, paneId: string) => {
 });
 
 // UI state
+ipcMain.on("session:proc-notify", (e, sessionId: string, label: string, procName: string, duration: number) => {
+  const ctx = getWindowContext(e.sender.id);
+  if (!ctx || ctx.win.isFocused() || !ctx.win.isVisible()) return;
+  if (duration > 5) {
+    const mins = Math.floor(duration / 60);
+    const secs = duration % 60;
+    const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+    new Notification({ title: `${label} — completed`, body: `${procName} finished (${timeStr})` }).show();
+    if (!ctx.win.isDestroyed()) ctx.win.webContents.send("session:notified", sessionId);
+  }
+});
+
 ipcMain.handle("ui:save-sidebar-width", (e, width: number) => {
   getWindowContext(e.sender.id)?.sessions.saveSidebarWidth(width);
 });
@@ -758,13 +742,13 @@ function buildMenu() {
         click: () => applyThemeToAll(id),
       })),
     },
-    ...(process.env.VITE_DEV_SERVER ? [{
+    {
       label: "Dev",
       submenu: [
         { label: "Toggle DevTools", accelerator: "CmdOrCtrl+Alt+I", click: () => { BrowserWindow.getFocusedWindow()?.webContents.toggleDevTools(); } },
         { label: "Reload", accelerator: "CmdOrCtrl+Shift+R", click: () => { BrowserWindow.getFocusedWindow()?.webContents.reload(); } },
       ],
-    }] : []),
+    },
   ]);
   Menu.setApplicationMenu(menu);
 }

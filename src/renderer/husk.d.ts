@@ -39,6 +39,7 @@ interface HuskAPI {
   } | null>;
   getProcessBreakdown: (id: string) => Promise<{ pid: number; name: string; memory: number; cpu: number }[] | null>;
   isCaffeinated: (id: string) => Promise<boolean>;
+  notifyProcessComplete: (sessionId: string, label: string, procName: string, duration: number) => void;
 
   // UI
   saveSidebarWidth: (width: number) => Promise<void>;

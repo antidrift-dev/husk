@@ -46,6 +46,8 @@ export default function App() {
   const [settings, setSettings] = useState<SettingsData>(DEFAULTS);
   const dragging = useRef(false);
   const focusedPanesRef = useRef<Record<string, string>>({});
+  const prevProcessRef = useRef<Record<string, string>>({});
+  const processStartTimeRef = useRef<Record<string, number>>({});
 
   // Pane tree per session
   const [paneTrees, setPaneTrees] = useState<Record<string, PaneNode>>({});
@@ -95,6 +97,8 @@ export default function App() {
   };
 
   const handleClose = async (id: string) => {
+    delete prevProcessRef.current[id];
+    delete processStartTimeRef.current[id];
     await window.husk.closeSession(id);
     // Dispose all cached terminals for this session
     const tree = paneTrees[id];
@@ -390,6 +394,8 @@ export default function App() {
   // Session exit
   useEffect(() => {
     return window.husk.onSessionExited((id) => {
+      delete prevProcessRef.current[id];
+      delete processStartTimeRef.current[id];
       // Dispose cached terminals for this session's panes
       setPaneTrees((prev) => {
         const tree = prev[id];
@@ -440,6 +446,20 @@ export default function App() {
         if (cancelled) return;
         if (proc) procs[s.id] = proc;
         if (caffeinated) caff[s.id] = true;
+
+        if (proc) {
+          const shells = ["zsh", "bash", "fish", "sh", "pwsh", "powershell"];
+          const prev = prevProcessRef.current[s.id];
+          if (prev && !shells.includes(prev) && shells.includes(proc)) {
+            const started = processStartTimeRef.current[s.id];
+            const duration = started ? Math.round((Date.now() - started) / 1000) : 0;
+            window.husk.notifyProcessComplete(s.id, s.label, prev, duration);
+          }
+          if (proc !== prev) {
+            if (!shells.includes(proc)) processStartTimeRef.current[s.id] = Date.now();
+            prevProcessRef.current[s.id] = proc;
+          }
+        }
         setSessionStatuses(prev => ({
           ...prev,
           [s.id]: { cwd: dir, fgProcess: proc, mem, claudeCtx: prev[s.id]?.claudeCtx ?? null },

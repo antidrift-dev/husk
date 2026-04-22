@@ -1,6 +1,6 @@
 {
   "name": "husk",
-  "version": "0.2.87",
+  "version": "0.2.102",
   "author": {
     "name": "Reloop Labs, LLC",
     "email": "hello@antidrift.dev"
@@ -48,7 +48,7 @@
   "build": {
     "appId": "dev.antidrift.husk",
     "productName": "Husk",
-    "buildVersion": "87",
+    "buildVersion": "102",
     "artifactName": "${productName}-${version}-b${buildVersion}-${arch}.${ext}",
     "directories": {
       "output": "release"
@@ -77,7 +77,7 @@
       "gatekeeperAssess": false,
       "entitlements": "entitlements.mac.plist",
       "entitlementsInherit": "entitlements.mac.plist",
-      "notarize": false,
+      "notarize": true,
       "target": [
         "dmg",
         "zip"

@@ -59,12 +59,23 @@ export class SessionManager {
 
   private spawnPty(cwd: string): pty.IPty {
     const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "/bin/zsh");
+    const env = { ...this.getShellEnv() };
+    // Strip host-terminal identity so shell rc files don't re-inject terminal-
+    // specific vars (e.g. Ghostty's zsh integration resets TERM=xterm-ghostty
+    // and TERMINFO after node-pty sets TERM=xterm-256color).
+    for (const key of Object.keys(env)) {
+      if (key.startsWith("GHOSTTY_")) delete env[key];
+    }
+    delete env.TERMINFO;
+    delete env.TERMINFO_DIRS;
+    env.TERM_PROGRAM = "iTerm.app";
+    env.TERM_PROGRAM_VERSION = "3.5.0";
     return pty.spawn(shell, ["-l"], {
       name: "xterm-256color",
       cols: 80,
       rows: 24,
       cwd,
-      env: { ...this.getShellEnv(), TERM_PROGRAM: "Husk" },
+      env,
     });
   }
 
