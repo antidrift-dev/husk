@@ -33,7 +33,7 @@ STAGE="$OUT/dmg"
 mkdir "$STAGE"
 ditto "$APP" "$STAGE/husk.app"
 ln -s /Applications "$STAGE/Applications"
-hdiutil create -volname "husk $VERSION" -srcfolder "$STAGE" -format UDZO -ov "$OUT/$NAME.dmg"
+diskutil image create from --format UDZO --volumeName "husk $VERSION" "$STAGE" "$OUT/$NAME.dmg"
 rm -rf "$STAGE"
 codesign --timestamp --sign "$SIGN_ID" "$OUT/$NAME.dmg"
 xcrun notarytool submit "$OUT/$NAME.dmg" --keychain-profile husk --wait
