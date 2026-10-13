@@ -1598,6 +1598,37 @@ pub const CAPI = struct {
         return surface.core_surface.child_exited;
     }
 
+    /// Husk: pid of the process this surface spawned, or 0 if unknown.
+    export fn ghostty_surface_child_pid(surface: *Surface) i64 {
+        switch (surface.core_surface.io.backend) {
+            .exec => |*exec| {
+                const process = exec.subprocess.process orelse return 0;
+                return switch (process) {
+                    .fork_exec => |cmd| if (cmd.pid) |pid| @intCast(pid) else 0,
+                    .flatpak => 0,
+                };
+            },
+        }
+    }
+
+    /// Husk: foreground process group of the surface's pty (what is
+    /// running "in" the terminal right now), or 0 if unknown.
+    export fn ghostty_surface_foreground_pid(surface: *Surface) i64 {
+        if (comptime builtin.os.tag == .windows) return 0;
+        switch (surface.core_surface.io.backend) {
+            .exec => |*exec| {
+                const pty = exec.subprocess.pty orelse return 0;
+                const pgrp = husk_tcgetpgrp(pty.master);
+                return if (pgrp > 0) @intCast(pgrp) else 0;
+            },
+        }
+    }
+
+    extern "c" fn tcgetpgrp(fd: c_int) c_int;
+    fn husk_tcgetpgrp(fd: anytype) c_int {
+        return tcgetpgrp(@intCast(fd));
+    }
+
     /// Returns true if the surface has a selection.
     export fn ghostty_surface_has_selection(surface: *Surface) bool {
         return surface.core_surface.hasSelection();

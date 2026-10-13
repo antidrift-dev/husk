@@ -201,6 +201,18 @@ class AppDelegate: NSObject,
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Husk: Theme menu, profiles/workspaces in File
+        HuskThemes.installMenu()
+        HuskProfiles.installMenu()
+        HuskModel.shared.installMenu()
+        HuskSettings.installMenu()
+
+        // Husk: headless smoke test (see HuskSelfTest)
+        if HuskSelfTest.outDir != nil {
+            applicationHasBecomeActive = true
+            DispatchQueue.main.async { HuskSelfTest.run(ghostty: self.ghostty) }
+        }
+
         // System settings overrides
         UserDefaults.ghostty.register(defaults: [
             // Disable this so that repeated key events make it through to our terminal views.
@@ -407,14 +419,18 @@ class AppDelegate: NSObject,
             }
         }
 
+        // Husk: ⌘Q has to be held down to quit, and the hold is the confirmation.
+        if HuskHoldToQuit.shouldHold() { return .terminateCancel }
+        if HuskHoldToQuit.confirmed { return .terminateNow }
+
         // If our app says we don't need to confirm, we can exit now.
         if !ghostty.needsConfirmQuit { return .terminateNow }
 
         // We have some visible window. Show an app-wide modal to confirm quitting.
         let alert = NSAlert()
-        alert.messageText = "Quit Ghostty?"
+        alert.messageText = "Quit \(HuskVersion.appName)?"
         alert.informativeText = "All terminal sessions will be terminated."
-        alert.addButton(withTitle: "Close Ghostty")
+        alert.addButton(withTitle: "Close \(HuskVersion.appName)")
         alert.addButton(withTitle: "Cancel")
         alert.alertStyle = .warning
         switch alert.runModal() {
@@ -505,7 +521,7 @@ class AppDelegate: NSObject,
             // may want to show this as a sheet on the focused window (especially if we're
             // opening a tab). I'm not sure.
             let alert = NSAlert()
-            alert.messageText = "Allow Ghostty to execute \"\(filename)\"?"
+            alert.messageText = "Allow \(HuskVersion.appName) to execute \"\(filename)\"?"
             alert.addButton(withTitle: "Allow")
             alert.addButton(withTitle: "Cancel")
             alert.alertStyle = .warning

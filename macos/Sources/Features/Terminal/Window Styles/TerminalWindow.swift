@@ -166,12 +166,46 @@ class TerminalWindow: NSWindow {
         stackView.spacing = 4
         stackView.alignment = .centerY
         stackView.addArrangedSubview(tabColorIndicator)
+        stackView.addArrangedSubview(huskProcessLabel)
         stackView.addArrangedSubview(keyEquivalentLabel)
         stackView.addArrangedSubview(resetZoomTabButton)
         tab.accessoryView = stackView
 
         // Get our saved level
         level = UserDefaults.ghostty.value(forKey: Self.defaultLevelKey) as? NSWindow.Level ?? .normal
+
+        huskInstallCenteredTitle()
+    }
+
+    // MARK: Husk centered title
+
+    /// Husk: the system draws the title left-aligned next to the traffic lights; Husk
+    /// centers it. Hide the system title and draw our own, level with the traffic lights.
+    private lazy var huskTitleLabel: NSTextField = {
+        let label = NSTextField(labelWithString: "")
+        label.font = .titleBarFont(ofSize: NSFont.systemFontSize)
+        label.alignment = .center
+        label.lineBreakMode = .byTruncatingMiddle
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    private func huskInstallCenteredTitle() {
+        // Styles that already hide or replace the title keep their own behaviour.
+        guard styleMask.contains(.titled),
+              !(self is HiddenTitlebarTerminalWindow),
+              !(self is TitlebarTabsTahoeTerminalWindow),
+              !(self is TitlebarTabsVenturaTerminalWindow),
+              let titlebarView = titlebarContainer?.firstDescendant(withClassName: "NSTitlebarView"),
+              let closeButton = standardWindowButton(.closeButton) else { return }
+        titleVisibility = .hidden
+        huskTitleLabel.stringValue = title
+        huskTitleLabel.textColor = isKeyWindow ? .labelColor : .secondaryLabelColor
+        titlebarView.addSubview(huskTitleLabel)
+        NSLayoutConstraint.activate([
+            huskTitleLabel.centerXAnchor.constraint(equalTo: titlebarView.centerXAnchor),
+            huskTitleLabel.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
+        ])
     }
 
     // Both of these must be true for windows without decorations to be able to
@@ -196,11 +230,13 @@ class TerminalWindow: NSWindow {
     override func becomeKey() {
         super.becomeKey()
         resetZoomTabButton.contentTintColor = .controlAccentColor
+        huskTitleLabel.textColor = .labelColor
     }
 
     override func resignKey() {
         super.resignKey()
         resetZoomTabButton.contentTintColor = .secondaryLabelColor
+        huskTitleLabel.textColor = .secondaryLabelColor
         tabTitleEditor.finishEditing(commit: true)
     }
 
@@ -255,6 +291,10 @@ class TerminalWindow: NSWindow {
         // it. This has been verified to work on macOS 12 to 26
         if isTabBar(childViewController) {
             childViewController.identifier = Self.tabBarIdentifier
+            // Husk: the sidebar replaces the native tab bar
+            childViewController.isHidden = HuskModel.shared.showSidebar
+            // Husk: tint the new bar's tabs now rather than on the next poll
+            DispatchQueue.main.async { MainActor.assumeIsolated { HuskModel.shared.updateTabProcessLabels() } }
             tabBarDidAppear()
         }
     }
@@ -343,6 +383,35 @@ class TerminalWindow: NSWindow {
     }
 
     /// The label that has the key equivalent for tab views.
+    // MARK: Husk process label
+
+    /// Husk: what's running in this tab ("claude", "vim", "zsh"), tinted with Husk's
+    /// process colour. Shown in the native tab next to the ⌘N label.
+    private lazy var huskProcessLabel: NSTextField = {
+        let label = NSTextField(labelWithAttributedString: NSAttributedString())
+        label.setContentCompressionResistancePriority(.windowSizeStayPut, for: .horizontal)
+        return label
+    }()
+
+    var huskProcessText: String { huskProcessLabel.stringValue }
+
+    func huskSetProcess(_ name: String?, color: NSColor?) {
+        guard let name, !name.isEmpty else {
+            huskProcessLabel.attributedStringValue = NSAttributedString()
+            return
+        }
+        // The whole tab carries the process colour (HuskModel.updateTabProcessLabels);
+        // the label itself stays plain secondary text.
+        _ = color
+        let text = NSAttributedString(string: name, attributes: [
+            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+            .foregroundColor: NSColor.secondaryLabelColor,
+        ])
+        if huskProcessLabel.attributedStringValue != text {
+            huskProcessLabel.attributedStringValue = text
+        }
+    }
+
     private lazy var keyEquivalentLabel: NSTextField = {
         let label = NSTextField(labelWithAttributedString: NSAttributedString())
         label.setContentCompressionResistancePriority(.windowSizeStayPut, for: .horizontal)
@@ -391,6 +460,8 @@ class TerminalWindow: NSWindow {
         didSet {
             // Whenever we change the window title we must also update our
             // tab title if we're using custom fonts.
+            if let huskTabTitle { tab.title = huskTabTitle }
+            huskTitleLabel.stringValue = title
             tab.attributedTitle = attributedTitle
             /// We also needs to update this here, just in case
             /// the value is not what we want
@@ -424,6 +495,15 @@ class TerminalWindow: NSWindow {
             .firstDescendant(withClassName: "NSTextField") as? NSTextField
     }
 
+    /// Husk: the tab's own label (directory name), separate from the window title,
+    /// which shows the Husk version.
+    var huskTabTitle: String? {
+        didSet {
+            tab.title = huskTabTitle ?? title
+            tab.attributedTitle = attributedTitle
+        }
+    }
+
     // Return a styled representation of our title property.
     var attributedTitle: NSAttributedString? {
         guard let titlebarFont = titlebarFont else { return nil }
@@ -432,7 +512,7 @@ class TerminalWindow: NSWindow {
             .font: titlebarFont,
             .foregroundColor: isKeyWindow ? NSColor.labelColor : NSColor.secondaryLabelColor,
         ]
-        return NSAttributedString(string: title, attributes: attributes)
+        return NSAttributedString(string: huskTabTitle ?? title, attributes: attributes)
     }
 
     var titlebarContainer: NSView? {

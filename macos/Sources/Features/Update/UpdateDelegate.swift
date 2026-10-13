@@ -3,6 +3,9 @@ import Cocoa
 
 extension UpdateDriver: SPUUpdaterDelegate {
     func feedURLString(for updater: SPUUpdater) -> String? {
+        // Husk: no husk update feed yet; never point at Ghostty's appcast.
+        return nil
+
         guard let appDelegate = NSApplication.shared.delegate as? AppDelegate else {
             return nil
         }

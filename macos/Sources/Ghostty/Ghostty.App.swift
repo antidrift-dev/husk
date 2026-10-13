@@ -119,8 +119,8 @@ extension Ghostty {
         }
 
         static func openConfig() {
-            let str = Ghostty.AllocatedString(ghostty_config_open_path()).string
-            guard !str.isEmpty else { return }
+            // Husk: open husk's config, never Ghostty's.
+            guard let str = HuskConfig.ensureUserConfig() else { return }
             #if os(macOS)
             let fileURL = URL(fileURLWithPath: str).absoluteString
             var action = ghostty_action_open_url_s()

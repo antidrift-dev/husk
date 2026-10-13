@@ -44,6 +44,10 @@ class UpdateController {
     /// This must be called before the updater can check for updates. If starting fails,
     /// the error will be shown to the user.
     func startUpdater() {
+        // Husk: no husk update feed yet. Never start Sparkle, or it would
+        // "update" husk to stock Ghostty from Ghostty's appcast.
+        return
+
         do {
             try updater.start()
         } catch {
