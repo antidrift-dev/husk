@@ -103,6 +103,8 @@ class TerminalWindowRestoration: NSObject, NSWindowRestoration {
             return
         }
 
+        let huskWindowLabel = HuskRestore.windowLabel(from: state) // Husk
+
         // Decode the state. If we can't decode the state, then we can't restore.
         guard let state = TerminalRestorableState(coder: state) else {
             completionHandler(nil, TerminalRestoreError.stateDecodeFailed)
@@ -126,6 +128,7 @@ class TerminalWindowRestoration: NSObject, NSWindowRestoration {
 
         // Restore the tab title override
         c.titleOverride = state.titleOverride
+        c.windowLabel = huskWindowLabel // Husk
 
         // Setup our restored state on the controller
         // Find the focused surface in surfaceTree

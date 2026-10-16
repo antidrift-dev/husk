@@ -395,6 +395,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         // Create a new window and add it to the parent
         let controller = TerminalController.init(ghostty, withBaseConfig: baseConfig)
         guard let window = controller.window else { return controller }
+        controller.windowLabel = parentController.windowLabel // Husk: a new tab joins its window's project
 
         // If the parent is miniaturized, then macOS exhibits really strange behaviors
         // so we have to bring it back out.
@@ -544,20 +545,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             }
         }
 
-        Self.syncWindowsMenu()
-    }
-
-    /// Husk: list each window once in the Window menu, not every tab. Each macOS tab is its
-    /// own NSWindow, so only the selected tab of each tab group stays in the menu (under
-    /// that tab's title). All windows are synced because a tab dragged out of one group,
-    /// or closed in it, changes which tab that group has selected.
-    static func syncWindowsMenu() {
-        for controller in all {
-            guard let window = controller.window else { continue }
-            let group = window.tabGroup
-            window.isExcludedFromWindowsMenu =
-                (group?.windows.count ?? 1) > 1 && group?.selectedWindow != window
-        }
+        huskTabsDidChange() // Husk
     }
 
     private func fixTabBar() {
@@ -1051,9 +1039,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
 
         // Initialize our content view to the SwiftUI root
         let container = TerminalViewContainer {
-            HuskChrome(controller: self) {
-                TerminalView(ghostty: ghostty, viewModel: self, delegate: self)
-            }
+            HuskChrome(controller: self) { TerminalView(ghostty: ghostty, viewModel: self, delegate: self) } // Husk: sidebar and status bar
         }
 
         // Set the initial content size on the container so that
@@ -1233,6 +1219,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
     func window(_ window: NSWindow, willEncodeRestorableState state: NSCoder) {
         let data = TerminalRestorableState(from: self)
         data.encode(with: state)
+        HuskRestore.encode(self, to: state) // Husk
     }
 
     // MARK: First Responder

@@ -29,7 +29,7 @@ husk has its own bundle ID (`dev.antidrift.husktty`) and config, so it never rea
   notifications when a command finishes.
 - **Profiles and workspaces** in the File menu, using the same JSON as Husk in `~/.husk/`.
 - **Optional sidebar** of tabs (View → Show Sidebar). Native top tabs are the default.
-- **Hold ⌘Q to quit**, so a stray ⌘Q doesn't close every session.
+- **Press ⌘Q three times to quit**, so a stray ⌘Q doesn't close every session.
 - **One Window menu entry per window**, not one per tab.
 
 ## Config

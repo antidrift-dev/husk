@@ -95,6 +95,8 @@ class BaseTerminalController: NSWindowController,
         didSet { applyTitleToWindow() }
     }
 
+    let husk = HuskControllerState() // Husk: see Husk/HuskTitles.swift
+
     /// The last computed title from the focused surface (without the override).
     private var lastComputedTitle: String = "👻"
 
@@ -842,26 +844,21 @@ class BaseTerminalController: NSWindowController,
 
     private func applyTitleToWindow() {
         guard let window else { return }
+        if huskApplyTitle(override: titleOverride.map { computeTitle(title: $0, bell: focusedSurface?.bell ?? false) }, computed: lastComputedTitle) { return } // Husk
 
-        // Husk: the title bar shows "Husk v0.3.<build>"; each tab (and its Window-menu entry)
-        // is named after the focused pane's directory, or the user's rename.
-        let label: String
         if let titleOverride {
-            label = computeTitle(title: titleOverride, bell: focusedSurface?.bell ?? false)
-        } else if let pwd = focusedSurface?.pwd, !pwd.isEmpty {
-            label = HuskDirLabel.label(for: pwd)
-        } else {
-            label = lastComputedTitle
+            window.title = computeTitle(
+                title: titleOverride,
+                bell: focusedSurface?.bell ?? false)
+            return
         }
 
-        window.title = HuskVersion.windowTitle
-        (window as? TerminalWindow)?.huskTabTitle = label
-        NSApp.changeWindowsItem(window, title: label, filename: false)
+        window.title = lastComputedTitle
     }
 
     func pwdDidChange(to: URL?) {
         guard let window else { return }
-        applyTitleToWindow()
+        applyTitleToWindow() // Husk: tabs are named after their directory
 
         if derivedConfig.macosTitlebarProxyIcon == .visible {
             // Use the 'to' URL directly

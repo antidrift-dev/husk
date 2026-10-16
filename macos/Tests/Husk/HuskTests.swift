@@ -73,9 +73,60 @@ struct HuskGitTests {
     }
 }
 
-struct HuskClaudeTests {
-    @Test func encodesCwdLikeClaudeCode() {
-        #expect(HuskClaude.encode("/Users/chris/Projects/husk") == "-Users-chris-Projects-husk")
+@Suite(.serialized) struct HuskClaudeTests {
+    /// A transcript in a folder named the way Claude Code names it for a dotted path
+    /// (~/Antidrift.io → -Users-chris-Antidrift-io), found by session ID alone.
+    @Test func findsTranscriptBySessionId() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("husk-\(UUID().uuidString)")
+        let folder = root.appendingPathComponent("-Users-chris-Antidrift-io")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let line = #"{"message":{"model":"claude-sonnet-5-5","usage":{"input_tokens":5,"cache_read_input_tokens":4000,"cache_creation_input_tokens":0}}}"#
+        try line.write(to: folder.appendingPathComponent("abc-123.jsonl"), atomically: true, encoding: .utf8)
+
+        let saved = HuskClaude.projectsRoot
+        HuskClaude.projectsRoot = root
+        defer { HuskClaude.projectsRoot = saved }
+
+        let session = HuskClaudeSession(pid: 1, sessionId: "abc-123", cwd: "/Users/chris/Antidrift.io")
+        #expect(HuskClaude.context(for: session)?.tokens == 4005)
+        #expect(HuskClaude.context(for: HuskClaudeSession(pid: 1, sessionId: "missing", cwd: "/x")) == nil)
+    }
+
+    @Test func matchesTabToItsOwnSession() {
+        let sessions = [
+            HuskClaudeSession(pid: 100, sessionId: "a", cwd: "/p"),
+            HuskClaudeSession(pid: 200, sessionId: "b", cwd: "/p"),
+        ]
+        #expect(HuskClaude.session(foregroundPid: 200, among: sessions)?.sessionId == "b")
+        #expect(HuskClaude.session(foregroundPid: 0, among: sessions) == nil)
+    }
+
+    @Test func listsOtherSessionsInTheSameFolderOnly() {
+        let sessions = [
+            HuskClaudeSession(pid: 100, sessionId: "a", cwd: "/p"),
+            HuskClaudeSession(pid: 300, sessionId: "c", cwd: "/p"),
+            HuskClaudeSession(pid: 200, sessionId: "b", cwd: "/p/sub"),
+        ]
+        #expect(HuskClaude.others(of: sessions[0], among: sessions).map(\.pid) == [300])
+        #expect(HuskClaude.others(of: sessions[2], among: sessions).isEmpty)
+    }
+
+    /// Session files whose process isn't a live `claude` (crashed, or the pid reused) are skipped.
+    @Test func skipsSessionFilesWithoutALiveClaude() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("husk-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for pid in [getpid(), 999_999] {
+            let json = #"{"pid":\#(pid),"sessionId":"s\#(pid)","cwd":"/p"}"#
+            try json.write(to: root.appendingPathComponent("\(pid).json"), atomically: true, encoding: .utf8)
+        }
+
+        let saved = HuskClaude.sessionsRoot
+        HuskClaude.sessionsRoot = root
+        defer { HuskClaude.sessionsRoot = saved }
+
+        #expect(HuskClaude.liveSessions().isEmpty)
     }
 
     @Test func parsesLastUsageEntry() throws {

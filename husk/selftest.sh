@@ -16,7 +16,9 @@ defaults write "$BUNDLE_ID" ApplePersistenceIgnoreState -bool YES
 HUSKTTY_SELFTEST="$OUT" "$APP/Contents/MacOS/ghostty" >/dev/null 2>&1 &
 PID=$!
 for i in $(seq 1 45); do [[ -f "$OUT/report.json" ]] && break; sleep 1; done
-sleep 2; kill $PID 2>/dev/null
+# The app rewrites the report as later checks finish, then quits on its own.
+for i in $(seq 1 20); do kill -0 $PID 2>/dev/null || break; sleep 1; done
+kill $PID 2>/dev/null
 defaults delete "$BUNDLE_ID" ApplePersistenceIgnoreState 2>/dev/null
 cat "$OUT/report.json" 2>/dev/null || { echo "no report"; exit 1; }
 echo "\n→ $OUT/window.png"

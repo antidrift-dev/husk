@@ -10,6 +10,8 @@ struct HuskTabStatus: Equatable {
     var memoryMB: Int?
     var git: HuskGitInfo?
     var agentContext: HuskClaudeContext?  // claude or codex
+    /// Other Claude sessions running in this tab's Claude session folder, in any terminal.
+    var otherSessions: [HuskOtherSession] = []
     var caffeinated = false
 }
 
@@ -259,6 +261,7 @@ final class HuskModel: ObservableObject {
 
         queue.async { [weak self] in
             var result: [ObjectIdentifier: HuskTabStatus] = [:]
+            let claudeSessions = HuskClaude.liveSessions()
             for snap in snapshots {
                 var status = HuskTabStatus()
                 status.cwd = snap.pwd
@@ -271,7 +274,11 @@ final class HuskModel: ObservableObject {
                 if let pwd = snap.pwd, !pwd.isEmpty {
                     status.git = HuskGit.info(for: pwd)
                     switch status.process {
-                    case "claude": status.agentContext = HuskClaude.context(for: pwd)
+                    case "claude":
+                        if let session = HuskClaude.session(foregroundPid: snap.foregroundPid, among: claudeSessions) {
+                            status.agentContext = HuskClaude.context(for: session)
+                            status.otherSessions = HuskClaude.others(of: session, among: claudeSessions)
+                        }
                     case "codex": status.agentContext = HuskCodex.context(for: pwd)
                     default: break
                     }

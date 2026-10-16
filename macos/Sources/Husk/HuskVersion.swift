@@ -7,7 +7,7 @@ enum HuskVersion {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.3.0"
     }
 
-    static var windowTitle: String { "Husk v\(version)" }
+    static var windowTitle: String { "husk v\(version)" }
 
     /// The app's name for user-facing text that Ghostty hard-codes as "Ghostty".
     static var appName: String {

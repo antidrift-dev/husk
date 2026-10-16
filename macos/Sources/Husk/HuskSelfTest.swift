@@ -5,7 +5,7 @@ import GhosttyKit
 ///
 ///     HUSKTTY_SELFTEST=/path/to/outdir  Ghostty.app/Contents/MacOS/ghostty
 ///
-/// Opens a window, adds a second tab, `cd /tmp` in it, then writes `report.json`
+/// Opens a window, labels it, adds a second tab, `cd /tmp` in it, then writes `report.json`
 /// (tab labels, window titles, per-tab status) and `window.png` (the window's
 /// SwiftUI chrome rendered offscreen) to the out dir and quits.
 enum HuskSelfTest {
@@ -23,6 +23,8 @@ enum HuskSelfTest {
         closeAllTerminalWindows()
         let first = TerminalController.newWindow(ghostty)
         after(3) {
+            // Window label: set before the second tab opens, which should inherit it.
+            first.windowLabel = "selftest"
             first.newTab(nil)
             after(3) {
                 let tabs = HuskModel.tabs(of: first.window)
@@ -54,9 +56,34 @@ enum HuskSelfTest {
                         if model.showSidebar, let tab = tabs.first { model.popOut(tab) }
                         extra["tabsAfterPopOut"] = HuskModel.tabs(of: tabs.last?.window).count
                         write(tabs: tabs, to: outDir)
-                        // Leave nothing for window restoration to bring back next launch.
-                        closeAllTerminalWindows()
-                        after(1) { exit(0) }
+                        // A tab dragged in from another window takes this window's label.
+                        let stray = TerminalController.newWindow(ghostty)
+                        stray.windowLabel = "stray"
+                        after(2) {
+                            if let strayWindow = stray.window {
+                                first.window?.addTabbedWindow(strayWindow, ordered: .above)
+                            }
+                            stray.relabelTabs()
+                            extra["mergedTabTitle"] = stray.window?.title ?? ""
+                            // ⌘Q twice through the event queue, like real key presses: still
+                            // running, one press to go.
+                            for _ in 0..<2 {
+                                if let q = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+                                                            timestamp: ProcessInfo.processInfo.systemUptime,
+                                                            windowNumber: first.window?.windowNumber ?? 0, context: nil,
+                                                            characters: "q", charactersIgnoringModifiers: "q",
+                                                            isARepeat: false, keyCode: 12) {
+                                    NSApp.postEvent(q, atStart: false)
+                                }
+                            }
+                            after(0.5) {
+                                extra["quitMessageAfterTwoPresses"] = HuskQuitGuard.hudText ?? ""
+                                write(tabs: tabs, to: outDir)
+                                // Leave nothing for window restoration to bring back next launch.
+                                closeAllTerminalWindows()
+                                after(1) { exit(0) }
+                            }
+                        }
                     }
                 }
             }
@@ -70,7 +97,7 @@ enum HuskSelfTest {
         var report: [String: Any] = [
             "tabCount": tabs.count,
             "nativeTabBarHidden": model.nativeTabBarsHidden,
-            "tabBarAccessories": NSApp.windows.flatMap { $0.titlebarAccessoryViewControllers }.filter { $0.identifier == TerminalWindow.tabBarIdentifier }.count,
+            "tabBarAccessories": NSApp.windows.filter { $0.styleMask.contains(.titled) }.flatMap { $0.titlebarAccessoryViewControllers }.filter { $0.identifier == TerminalWindow.tabBarIdentifier }.count,
             "sidebarShown": model.showSidebar,
             "theme": HuskThemes.selectedID,
             "windowsAtStart": windowsAtStart,
@@ -109,6 +136,12 @@ enum HuskSelfTest {
         report["settingsLayer"] = HuskSettings.shared.configText.split(separator: "\n").count
         report["appMemoryMB"] = Int(HuskProcess.residentBytes(pid: getpid()) / 1_048_576)
         report["viewMenuHasSidebar"] = NSApp.mainMenu?.item(withTitle: "View")?.submenu?.item(withTitle: "Show Sidebar") != nil
+        report["windowsMenuWindows"] = NSApp.windowsMenu?.items
+            .filter { $0.action == #selector(NSWindow.makeKeyAndOrderFront(_:)) }.map(\.title) ?? []
+        report["windowMenuHasLabelWindow"] = NSApp.mainMenu?.item(withTitle: "Window")?.submenu?.item(withTitle: "Label Window...") != nil
+        report["claudeSessions"] = HuskClaude.liveSessions().map { session in
+            "\(session.pid) \(session.cwd) ctx=\(HuskClaude.context(for: session)?.tokens ?? -1)"
+        }
         report["fileMenuHasProfiles"] = NSApp.mainMenu?.item(withTitle: "File")?.submenu?.item(withTitle: "Open Profile") != nil
 
         if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) {

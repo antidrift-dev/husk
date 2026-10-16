@@ -67,10 +67,7 @@ extension Ghostty {
             if let path {
                 ghostty_config_load_file(cfg, path)
             } else {
-                // Husk: Husk defaults + ~/.config/husktty/config, never Ghostty's own files.
-                for file in HuskConfig.files() {
-                    ghostty_config_load_file(cfg, file)
-                }
+                HuskConfig.files().forEach { ghostty_config_load_file(cfg, $0) } // Husk: husk's config files, never Ghostty's
             }
 
             // We only load CLI args when not running in Xcode because in Xcode we

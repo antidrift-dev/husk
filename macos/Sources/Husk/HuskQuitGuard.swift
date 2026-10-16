@@ -1,68 +1,45 @@
 import AppKit
 
-/// Hold ⌘Q to quit, like Chrome. A tap only shows "Hold ⌘Q to Quit"; keeping the keys down
-/// for `holdDuration` quits, and the hold stands in for the "Quit husk?" dialog. Only quits
-/// started from the keyboard wait for a hold: the menu, the Dock, AppleScript and logout
-/// quit as before.
-enum HuskHoldToQuit {
-    static let holdDuration: TimeInterval = 1.0
+/// Press ⌘Q three times to quit, so a stray ⌘Q doesn't close every session. The first press
+/// shows "Press ⌘Q 2 more times to quit", the second "1 more time", and the third quits in place
+/// of Ghostty's "Quit husk?" dialog. The count starts over when the next press is more than
+/// `pressWindow` later. Holding the keys down doesn't count, and only quits started from the
+/// keyboard are counted: the menu, the Dock, AppleScript and logout quit as before.
+enum HuskQuitGuard {
+    static let pressesToQuit = 3
+    static let pressWindow: TimeInterval = 1.0
 
-    /// Set once the hold completes, so the terminate it triggers goes straight through.
-    private(set) static var confirmed = false
-
-    private static var timer: Timer?
-    private static var keyMonitor: Any?
-    private static var resignObserver: NSObjectProtocol?
+    private static var presses = 0
+    private static var lastPress = Date.distantPast
     private static var hud: NSPanel?
+    /// The message showing now, for the self-test.
+    static var hudText: String? { hud?.alphaValue == 1 ? (hud?.contentView?.subviews.first as? NSTextField)?.stringValue : nil }
     private static var hideWork: DispatchWorkItem?
 
-    /// Called from applicationShouldTerminate. True means cancel this terminate and wait for the hold.
-    static func shouldHold() -> Bool {
-        if confirmed { return false }
+    /// Hook in applicationShouldTerminate. Nil leaves the decision to Ghostty.
+    static func terminateReply() -> NSApplication.TerminateReply? {
         guard let event = NSApp.currentEvent, event.type == .keyDown,
-              event.modifierFlags.contains(.command) else { return false }
-        // Key repeats re-send the quit while the keys are held; the running hold covers them.
-        if timer == nil { begin(event) }
-        return true
-    }
+              event.modifierFlags.contains(.command) else { return nil }
+        // Key repeat from holding ⌘Q down.
+        if event.isARepeat { return .terminateCancel }
 
-    private static func begin(_ event: NSEvent) {
-        let keyCode = event.keyCode
-        let key = (event.charactersIgnoringModifiers ?? "q").uppercased()
-        showHUD("Hold ⌘\(key) to Quit")
+        let now = Date()
+        if now.timeIntervalSince(lastPress) > pressWindow { presses = 0 }
+        presses += 1
+        lastPress = now
 
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyUp, .flagsChanged]) { e in
-            if (e.type == .keyUp && e.keyCode == keyCode)
-                || (e.type == .flagsChanged && !e.modifierFlags.contains(.command)) {
-                cancel()
-            }
-            return e
-        }
-        // Once the app is in the background its key-ups never arrive, so stop there.
-        resignObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
-        ) { _ in cancel() }
-
-        timer = Timer.scheduledTimer(withTimeInterval: holdDuration, repeats: false) { _ in
-            stopTracking()
+        if presses >= pressesToQuit {
+            presses = 0
             hideHUD(after: 0)
-            confirmed = true
-            NSApp.terminate(nil)
+            return .terminateNow
         }
-    }
 
-    private static func cancel() {
-        stopTracking()
-        hideHUD(after: 1.5)   // leave the hint up long enough to read
-    }
-
-    private static func stopTracking() {
-        timer?.invalidate()
-        timer = nil
-        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
-        keyMonitor = nil
-        if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
-        resignObserver = nil
+        let left = pressesToQuit - presses
+        let key = (event.charactersIgnoringModifiers ?? "q").uppercased()
+        showHUD("Press ⌘\(key) \(left) more time\(left == 1 ? "" : "s") to quit")
+        // Gone when the count starts over.
+        hideHUD(after: pressWindow)
+        return .terminateCancel
     }
 
     // MARK: HUD

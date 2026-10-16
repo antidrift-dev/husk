@@ -201,17 +201,7 @@ class AppDelegate: NSObject,
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Husk: Theme menu, profiles/workspaces in File
-        HuskThemes.installMenu()
-        HuskProfiles.installMenu()
-        HuskModel.shared.installMenu()
-        HuskSettings.installMenu()
-
-        // Husk: headless smoke test (see HuskSelfTest)
-        if HuskSelfTest.outDir != nil {
-            applicationHasBecomeActive = true
-            DispatchQueue.main.async { HuskSelfTest.run(ghostty: self.ghostty) }
-        }
+        if HuskApp.didFinishLaunching(self) { applicationHasBecomeActive = true } // Husk: see Husk/HuskApp.swift
 
         // System settings overrides
         UserDefaults.ghostty.register(defaults: [
@@ -419,9 +409,7 @@ class AppDelegate: NSObject,
             }
         }
 
-        // Husk: ⌘Q has to be held down to quit, and the hold is the confirmation.
-        if HuskHoldToQuit.shouldHold() { return .terminateCancel }
-        if HuskHoldToQuit.confirmed { return .terminateNow }
+        if let reply = HuskQuitGuard.terminateReply() { return reply } // Husk: press ⌘Q three times to quit
 
         // If our app says we don't need to confirm, we can exit now.
         if !ghostty.needsConfirmQuit { return .terminateNow }

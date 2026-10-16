@@ -119,8 +119,7 @@ extension Ghostty {
         }
 
         static func openConfig() {
-            // Husk: open husk's config, never Ghostty's.
-            guard let str = HuskConfig.ensureUserConfig() else { return }
+            guard let str = HuskConfig.ensureUserConfig() else { return } // Husk: open husk's config, never Ghostty's
             #if os(macOS)
             let fileURL = URL(fileURLWithPath: str).absoluteString
             var action = ghostty_action_open_url_s()

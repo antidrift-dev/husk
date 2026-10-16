@@ -1,8 +1,8 @@
 import Foundation
 
-/// Claude Code context-window usage for a directory.
-/// Port of husk/src/main/claude-context.ts: the newest top-level
-/// ~/.claude/projects/<cwd with / → ->/*.jsonl, last assistant `message.usage`.
+/// Claude Code context-window usage for one session: the last assistant `message.usage` in its
+/// transcript. Parsing is ported from husk/src/main/claude-context.ts; the session is found from
+/// the tab's `claude` process rather than guessed from the directory.
 struct HuskClaudeContext: Equatable {
     let tokens: Int
     let inputTokens: Int
@@ -13,18 +13,67 @@ struct HuskClaudeContext: Equatable {
     let contextWindow: Int
 }
 
+/// A running Claude Code session, from ~/.claude/sessions/<pid>.json.
+struct HuskClaudeSession: Equatable {
+    let pid: pid_t
+    let sessionId: String
+    let cwd: String
+}
+
+/// Another session running in the same folder as a tab's own, with its context if known.
+struct HuskOtherSession: Equatable {
+    let pid: pid_t
+    let context: HuskClaudeContext?
+}
+
 enum HuskClaude {
     static var projectsRoot = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/projects")
+    static var sessionsRoot = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/sessions")
     static var configPath = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude.json")
 
     private struct CacheKey: Hashable { let path: String; let mtime: Date; let size: Int }
     private static var cache: [CacheKey: HuskClaudeContext] = [:]
+    private static var sessionFiles: [String: URL] = [:]
     private static let lock = NSLock()
 
-    static func encode(_ cwd: String) -> String { cwd.replacingOccurrences(of: "/", with: "-") }
+    /// Claude Code writes ~/.claude/sessions/<pid>.json for each running session (undocumented;
+    /// seen in v2.1.302). Only sessions whose process is still a live `claude` count, so files
+    /// left behind by a crash, or a pid reused by something else, are skipped.
+    static func liveSessions() -> [HuskClaudeSession] {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: sessionsRoot, includingPropertiesForKeys: nil)
+        else { return [] }
+        return files.compactMap { file in
+            guard file.pathExtension == "json",
+                  let data = try? Data(contentsOf: file),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let pid = (obj["pid"] as? NSNumber).map({ pid_t(truncating: $0) }),
+                  let sessionId = obj["sessionId"] as? String,
+                  let cwd = obj["cwd"] as? String,
+                  HuskProcess.displayName(pid: pid) == "claude" else { return nil }
+            return HuskClaudeSession(pid: pid, sessionId: sessionId, cwd: cwd)
+        }
+    }
 
-    static func context(for cwd: String) -> HuskClaudeContext? {
-        guard !cwd.isEmpty, let (projectCwd, file) = resolve(cwd) else { return nil }
+    /// The session running in a tab: the tab's foreground process, or a `claude` started under it
+    /// (e.g. through a wrapper script).
+    static func session(foregroundPid: pid_t, among sessions: [HuskClaudeSession]) -> HuskClaudeSession? {
+        guard foregroundPid > 0 else { return nil }
+        if let own = sessions.first(where: { $0.pid == foregroundPid }) { return own }
+        let below = Set(HuskProcess.descendants(of: foregroundPid))
+        return sessions.first { below.contains($0.pid) }
+    }
+
+    /// Other live sessions in the same folder as `session`, in any terminal.
+    static func others(of session: HuskClaudeSession, among sessions: [HuskClaudeSession]) -> [HuskOtherSession] {
+        sessions
+            .filter { $0.cwd == session.cwd && $0.pid != session.pid }
+            .sorted { $0.pid < $1.pid }
+            .map { HuskOtherSession(pid: $0.pid, context: context(for: $0)) }
+    }
+
+    /// Context usage of one session, from its own transcript: ~/.claude/projects/*/<sessionId>.jsonl.
+    static func context(for session: HuskClaudeSession) -> HuskClaudeContext? {
+        guard let file = transcript(sessionId: session.sessionId) else { return nil }
         let attrs = try? FileManager.default.attributesOfItem(atPath: file.path)
         let key = CacheKey(path: file.path,
                            mtime: attrs?[.modificationDate] as? Date ?? .distantPast,
@@ -42,7 +91,7 @@ enum HuskClaude {
             info = parsed
         }
         guard let info else { return nil }
-        if let tier = contextWindowFromConfig(projectCwd: projectCwd, model: info.model), tier != info.contextWindow {
+        if let tier = contextWindowFromConfig(projectCwd: session.cwd, model: info.model), tier != info.contextWindow {
             return HuskClaudeContext(tokens: info.tokens, inputTokens: info.inputTokens,
                                      cacheReadTokens: info.cacheReadTokens, cacheCreationTokens: info.cacheCreationTokens,
                                      outputTokens: info.outputTokens, model: info.model, contextWindow: tier)
@@ -50,29 +99,22 @@ enum HuskClaude {
         return info
     }
 
-    /// Claude roots a project at the repo root, which may be above the shell's cwd: walk up.
-    private static func resolve(_ cwd: String) -> (String, URL)? {
-        var dir = cwd
-        while true {
-            if let latest = latestSession(in: projectsRoot.appendingPathComponent(encode(dir))) {
-                return (dir, latest)
-            }
-            let parent = (dir as NSString).deletingLastPathComponent
-            if parent == dir || parent.isEmpty { return nil }
-            dir = parent
-        }
-    }
+    /// Finds the transcript by name across all project folders, so the folder's name (Claude's
+    /// encoding of the path) never has to be worked out.
+    private static func transcript(sessionId: String) -> URL? {
+        lock.lock()
+        let known = sessionFiles[sessionId]
+        lock.unlock()
+        if let known, FileManager.default.fileExists(atPath: known.path) { return known }
 
-    private static func latestSession(in dir: URL) -> URL? {
-        guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey]) else { return nil }
-        return entries
-            .filter { $0.pathExtension == "jsonl" && ((try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false) }
-            .max { a, b in
-                let da = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                let db = (try? b.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                return da < db
-            }
+        let name = "\(sessionId).jsonl"
+        let folders = (try? FileManager.default.contentsOfDirectory(at: projectsRoot, includingPropertiesForKeys: nil)) ?? []
+        guard let found = folders.lazy.map({ $0.appendingPathComponent(name) })
+            .first(where: { FileManager.default.fileExists(atPath: $0.path) }) else { return nil }
+        lock.lock()
+        sessionFiles[sessionId] = found
+        lock.unlock()
+        return found
     }
 
     static func parse(_ file: URL) -> HuskClaudeContext? {
