@@ -19,19 +19,29 @@ enum HuskSelfTest {
     @MainActor
     static func run(ghostty: Ghostty.App) {
         guard let outDir else { return }
+        // Recent directories go to the out dir, not the real list.
+        HuskRecentDirs.storeURL = outDir.appendingPathComponent("recent-dirs.json")
         windowsAtStart = NSApp.windows.filter { $0.windowController is TerminalController }.count
         closeAllTerminalWindows()
         let first = TerminalController.newWindow(ghostty)
         after(3) {
             // Window label: set before the second tab opens, which should inherit it.
             first.windowLabel = "selftest"
+            // Recent directories: with /tmp in the list, the new tab offers it and ⌘1 cds there.
+            HuskRecentDirs.visit("/tmp")
             first.newTab(nil)
             after(3) {
                 let tabs = HuskModel.tabs(of: first.window)
-                // `text:` types raw input; sendText would arrive as a bracketed paste and not run.
-                if let surface = tabs.last?.focusedSurface?.surface {
-                    let action = "text:cd /tmp\\r"
-                    _ = ghostty_surface_binding_action(surface, action, UInt(action.lengthOfBytes(using: .utf8)))
+                let sheet = tabs.last?.window?.attachedSheet
+                extra["recentDirsModalShown"] = sheet != nil
+                if let sheet,
+                   let one = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+                                              timestamp: ProcessInfo.processInfo.systemUptime,
+                                              windowNumber: sheet.windowNumber, context: nil,
+                                              characters: "1", charactersIgnoringModifiers: "1",
+                                              isARepeat: false, keyCode: 18) {
+                    sheet.makeKey()
+                    NSApp.postEvent(one, atStart: false)
                 }
                 // Foreground process detection: run vim in the first tab
                 if let surface = tabs.first?.focusedSurface?.surface {
@@ -65,6 +75,15 @@ enum HuskSelfTest {
                             }
                             stray.relabelTabs()
                             extra["mergedTabTitle"] = stray.window?.title ?? ""
+                            // Settings opens centered over the terminal window.
+                            HuskSettings.show()
+                            if let settings = NSApp.windows.first(where: { $0.title == "husk Settings" }),
+                               let terminal = stray.window {
+                                extra["settingsSize"] = "\(Int(settings.frame.width))x\(Int(settings.frame.height))"
+                                extra["settingsOffsetFromTerminalCenter"] =
+                                    "\(Int(settings.frame.midX - terminal.frame.midX)),\(Int(settings.frame.midY - terminal.frame.midY))"
+                                settings.close()
+                            }
                             // ⌘Q twice through the event queue, like real key presses: still
                             // running, one press to go.
                             for _ in 0..<2 {
@@ -142,6 +161,7 @@ enum HuskSelfTest {
         report["claudeSessions"] = HuskClaude.liveSessions().map { session in
             "\(session.pid) \(session.cwd) ctx=\(HuskClaude.context(for: session)?.tokens ?? -1)"
         }
+        report["recentDirs"] = HuskRecentDirs.all
         report["fileMenuHasProfiles"] = NSApp.mainMenu?.item(withTitle: "File")?.submenu?.item(withTitle: "Open Profile") != nil
 
         if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) {

@@ -489,6 +489,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             }
         }
 
+        HuskRecentDirs.offer(in: controller, baseConfig: baseConfig, parentPwd: parentController.focusedSurface?.pwd) // Husk
         return controller
     }
 

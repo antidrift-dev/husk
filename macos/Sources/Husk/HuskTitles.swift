@@ -8,6 +8,8 @@ final class HuskControllerState {
     /// The inputs of the last title update, kept so a label change can redo it.
     fileprivate var lastOverride: String?
     fileprivate var lastComputed = ""
+    /// The last directory recorded in HuskRecentDirs for this tab.
+    fileprivate var lastVisited: String?
 }
 
 // MARK: Titles and the window label
@@ -35,6 +37,10 @@ extension BaseTerminalController {
             label = override
         } else if let pwd = focusedSurface?.pwd, !pwd.isEmpty {
             label = HuskDirLabel.label(for: pwd)
+            if husk.lastVisited != pwd {
+                husk.lastVisited = pwd
+                HuskRecentDirs.visit(pwd)
+            }
         } else {
             label = computed
         }

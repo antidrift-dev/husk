@@ -17,6 +17,8 @@ final class HuskSettings: ObservableObject {
     @AppStorage("HuskQuakeMode") var quakeMode = false { willSet { objectWillChange.send() } }
     @AppStorage("HuskQuakeHotkey") var quakeHotkey = "ctrl+grave_accent" { willSet { objectWillChange.send() } }
     @AppStorage("HuskNotifyOnFinish") var notifyOnFinish = true { willSet { objectWillChange.send() } }
+    /// Not part of the config layer: new tabs offer recent directories (HuskRecentDirs).
+    @AppStorage("HuskShowRecentDirs") var showRecentDirs = true { willSet { objectWillChange.send() } }
 
     /// The config layer these settings produce.
     var configText: String {
@@ -57,18 +59,39 @@ final class HuskSettings: ObservableObject {
 
     @MainActor private static var window: NSWindow?
 
+    static let defaultSize = NSSize(width: 640, height: 440)
+
     @MainActor
     static func show() {
         if window == nil {
             let w = NSWindow(contentViewController: NSHostingController(rootView: HuskSettingsView()))
             w.title = "husk Settings"
-            w.styleMask = [.titled, .closable]
+            w.styleMask = [.titled, .closable, .resizable]
             w.isReleasedWhenClosed = false
-            w.center()
+            w.setContentSize(defaultSize)
             window = w
         }
-        window?.makeKeyAndOrderFront(nil)
+        guard let window else { return }
+        // Every time it opens: over the terminal window in focus, or mid-screen without one.
+        if let terminal = NSApp.orderedWindows.first(where: { $0.windowController is TerminalController && $0.isVisible }) {
+            window.setFrameOrigin(centered(window.frame.size, over: terminal))
+        } else {
+            window.center()
+        }
+        window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// The origin that centers `size` over `target`, kept on the target's screen.
+    @MainActor
+    private static func centered(_ size: NSSize, over target: NSWindow) -> NSPoint {
+        let t = target.frame
+        var origin = NSPoint(x: t.midX - size.width / 2, y: t.midY - size.height / 2)
+        if let screen = (target.screen ?? NSScreen.main)?.visibleFrame {
+            origin.x = min(max(origin.x, screen.minX), screen.maxX - size.width)
+            origin.y = min(max(origin.y, screen.minY), screen.maxY - size.height)
+        }
+        return origin
     }
 
     /// Point ⌘, at this window; keep the raw config file one item below it.
@@ -133,11 +156,13 @@ struct HuskSettingsView: View {
                 Text("Uses Ghostty key names, e.g. ctrl+grave_accent. Needs Accessibility permission.")
                     .font(.caption).foregroundStyle(.secondary)
                 Toggle("Notify when a long command finishes", isOn: $settings.notifyOnFinish)
+                Toggle("Show recent directories in new tabs", isOn: $settings.showRecentDirs)
             }
             .tabItem { Text("Features") }
         }
         .padding(20)
-        .frame(width: 460, height: 280)
+        .frame(minWidth: HuskSettings.defaultSize.width, maxWidth: .infinity,
+               minHeight: HuskSettings.defaultSize.height, maxHeight: .infinity)
         .onChange(of: settings.configText) { _ in settings.apply() }
     }
 }
