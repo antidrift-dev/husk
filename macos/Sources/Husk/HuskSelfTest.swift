@@ -97,10 +97,25 @@ enum HuskSelfTest {
                             }
                             after(0.5) {
                                 extra["quitMessageAfterTwoPresses"] = HuskQuitGuard.hudText ?? ""
-                                write(tabs: tabs, to: outDir)
-                                // Leave nothing for window restoration to bring back next launch.
-                                closeAllTerminalWindows()
-                                after(1) { exit(0) }
+                                // ⌘⇧N: a new window offers recent directories too.
+                                let before = Set(TerminalController.all.map(ObjectIdentifier.init))
+                                if let n = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .shift],
+                                                            timestamp: ProcessInfo.processInfo.systemUptime,
+                                                            windowNumber: first.window?.windowNumber ?? 0, context: nil,
+                                                            characters: "N", charactersIgnoringModifiers: "n",
+                                                            isARepeat: false, keyCode: 45) {
+                                    first.window?.makeKey()
+                                    NSApp.postEvent(n, atStart: false)
+                                }
+                                after(2) {
+                                    let opened = TerminalController.all.first { !before.contains(ObjectIdentifier($0)) }
+                                    extra["newWindowOpened"] = opened != nil
+                                    extra["recentDirsModalOnNewWindow"] = opened?.window?.attachedSheet != nil
+                                    write(tabs: tabs, to: outDir)
+                                    // Leave nothing for window restoration to bring back next launch.
+                                    closeAllTerminalWindows()
+                                    after(1) { exit(0) }
+                                }
                             }
                         }
                     }
@@ -160,6 +175,9 @@ enum HuskSelfTest {
         report["windowMenuHasLabelWindow"] = NSApp.mainMenu?.item(withTitle: "Window")?.submenu?.item(withTitle: "Label Window...") != nil
         report["claudeSessions"] = HuskClaude.liveSessions().map { session in
             "\(session.pid) \(session.cwd) ctx=\(HuskClaude.context(for: session)?.tokens ?? -1)"
+        }
+        report["codexSessions"] = HuskCodex.liveSessions().map { session in
+            "\(session.pid) \(session.cwd) ctx=\(HuskCodex.context(for: session.cwd)?.tokens ?? -1)"
         }
         report["recentDirs"] = HuskRecentDirs.all
         report["fileMenuHasProfiles"] = NSApp.mainMenu?.item(withTitle: "File")?.submenu?.item(withTitle: "Open Profile") != nil

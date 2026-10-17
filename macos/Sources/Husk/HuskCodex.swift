@@ -2,14 +2,53 @@ import Foundation
 import SQLite3
 
 /// Codex CLI context-window usage for a directory. Port of husk/src/main/codex-context.ts:
-/// the newest unarchived thread for the cwd in ~/.codex/state_5.sqlite, then the last
+/// the newest unarchived thread for the cwd (other than reviewer runs) in ~/.codex/state_5.sqlite, then the last
 /// `token_count` event in its rollout jsonl.
+/// A running Codex CLI session: its process and the folder it's in.
+struct HuskCodexSession: Equatable {
+    let pid: pid_t
+    let cwd: String
+}
+
 enum HuskCodex {
     static var databasePath = NSHomeDirectory() + "/.codex/state_5.sqlite"
 
     private struct CacheKey: Hashable { let path: String; let mtime: Date; let size: Int }
     private static var cache: [CacheKey: HuskClaudeContext] = [:]
     private static let lock = NSLock()
+
+    /// Codex sessions running in a terminal, found by process: Codex keeps no per-process
+    /// session file the way Claude Code does. The native binary is named `codex` (the npm
+    /// install runs it under a `node` wrapper); the desktop app's `codex` processes have no
+    /// terminal, and the ones under a session are its own helpers, so both are skipped.
+    static func liveSessions() -> [HuskCodexSession] {
+        let pids = HuskProcess.allPids()
+        let codex = Set(pids.filter { HuskProcess.name(pid: $0) == "codex" })
+        return codex.compactMap { pid in
+            guard HuskProcess.hasTerminal(pid: pid),
+                  !codex.contains(HuskProcess.parent(of: pid)),
+                  let cwd = HuskProcess.cwd(pid: pid) else { return nil }
+            return HuskCodexSession(pid: pid, cwd: cwd)
+        }
+    }
+
+    /// The session running in a tab: the tab's foreground process (often the `node` wrapper),
+    /// or a `codex` under it.
+    static func session(foregroundPid: pid_t, among sessions: [HuskCodexSession]) -> HuskCodexSession? {
+        guard foregroundPid > 0 else { return nil }
+        if let own = sessions.first(where: { $0.pid == foregroundPid }) { return own }
+        let below = Set(HuskProcess.descendants(of: foregroundPid))
+        return sessions.first { below.contains($0.pid) }
+    }
+
+    /// Codex sessions in `cwd` other than `pid`. Codex doesn't say which conversation a process
+    /// is on, so each gets the folder's newest one, the same lookup as the status bar.
+    static func others(in cwd: String, excluding pid: pid_t, among sessions: [HuskCodexSession]) -> [HuskOtherSession] {
+        let matching = sessions.filter { $0.cwd == cwd && $0.pid != pid }.sorted { $0.pid < $1.pid }
+        guard !matching.isEmpty else { return [] }
+        let ctx = context(for: cwd)
+        return matching.map { HuskOtherSession(pid: $0.pid, agent: "codex", context: ctx) }
+    }
 
     static func context(for cwd: String) -> HuskClaudeContext? {
         guard let (rollout, model) = latestThread(cwd: cwd) else { return nil }
@@ -37,7 +76,12 @@ enum HuskCodex {
             return nil
         }
         defer { sqlite3_close(db) }
-        let sql = "SELECT rollout_path, model FROM threads WHERE cwd = ? AND archived = 0 ORDER BY updated_at DESC LIMIT 1"
+        // Codex's reviewer runs are threads in the same folder with no token counts; skip them.
+        let sql = """
+            SELECT rollout_path, model FROM threads
+            WHERE cwd = ? AND archived = 0 AND source NOT LIKE '%"guardian"%'
+            ORDER BY updated_at DESC LIMIT 1
+            """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
         defer { sqlite3_finalize(stmt) }

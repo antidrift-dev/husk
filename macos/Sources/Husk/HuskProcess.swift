@@ -55,6 +55,41 @@ enum HuskProcess {
         return name(pid: pid)
     }
 
+    static func allPids() -> [pid_t] {
+        let count = proc_listallpids(nil, 0)
+        guard count > 0 else { return [] }
+        var pids = [pid_t](repeating: 0, count: Int(count) * 2)
+        let n = proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size))
+        guard n > 0 else { return [] }
+        return Array(pids.prefix(Int(n)))
+    }
+
+    private static func bsdInfo(pid: pid_t) -> proc_bsdinfo? {
+        var info = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size else { return nil }
+        return info
+    }
+
+    static func parent(of pid: pid_t) -> pid_t {
+        bsdInfo(pid: pid).map { pid_t($0.pbi_ppid) } ?? 0
+    }
+
+    /// Whether the process has a controlling terminal (runs in a tab, not in the background).
+    static func hasTerminal(pid: pid_t) -> Bool {
+        guard let info = bsdInfo(pid: pid) else { return false }
+        return info.e_tdev != UInt32(bitPattern: -1) && info.e_tdev != 0
+    }
+
+    /// The process's current directory.
+    static func cwd(pid: pid_t) -> String? {
+        var info = proc_vnodepathinfo()
+        let size = Int32(MemoryLayout<proc_vnodepathinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &info, size) == size else { return nil }
+        let path = withUnsafeBytes(of: info.pvi_cdir.vip_path) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+        return path.isEmpty ? nil : path
+    }
+
     static func children(of pid: pid_t) -> [pid_t] {
         let count = proc_listchildpids(pid, nil, 0)
         guard count > 0 else { return [] }

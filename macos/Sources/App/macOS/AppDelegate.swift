@@ -724,7 +724,7 @@ class AppDelegate: NSObject,
     @objc private func ghosttyNewWindow(_ notification: Notification) {
         let configAny = notification.userInfo?[Ghostty.Notification.NewSurfaceConfigKey]
         let config = configAny as? Ghostty.SurfaceConfiguration
-        _ = TerminalController.newWindow(ghostty, withBaseConfig: config)
+        HuskRecentDirs.offer(inNewWindow: TerminalController.newWindow(ghostty, withBaseConfig: config), startingIn: config?.workingDirectory) // Husk
     }
 
     @objc private func ghosttyNewTab(_ notification: Notification) {
@@ -958,7 +958,7 @@ class AppDelegate: NSObject,
     }
 
     @IBAction func newWindow(_ sender: Any?) {
-        _ = TerminalController.newWindow(ghostty)
+        HuskRecentDirs.offer(inNewWindow: TerminalController.newWindow(ghostty), startingIn: nil) // Husk
     }
 
     @IBAction func newTab(_ sender: Any?) {

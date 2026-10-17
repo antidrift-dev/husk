@@ -20,9 +20,11 @@ struct HuskClaudeSession: Equatable {
     let cwd: String
 }
 
-/// Another session running in the same folder as a tab's own, with its context if known.
+/// Another session (Claude Code or Codex) running in the same folder as a tab's own, with its
+/// context if known.
 struct HuskOtherSession: Equatable {
     let pid: pid_t
+    let agent: String
     let context: HuskClaudeContext?
 }
 
@@ -63,12 +65,12 @@ enum HuskClaude {
         return sessions.first { below.contains($0.pid) }
     }
 
-    /// Other live sessions in the same folder as `session`, in any terminal.
-    static func others(of session: HuskClaudeSession, among sessions: [HuskClaudeSession]) -> [HuskOtherSession] {
+    /// Other live sessions in `cwd`, in any terminal, other than `pid`.
+    static func others(in cwd: String, excluding pid: pid_t, among sessions: [HuskClaudeSession]) -> [HuskOtherSession] {
         sessions
-            .filter { $0.cwd == session.cwd && $0.pid != session.pid }
+            .filter { $0.cwd == cwd && $0.pid != pid }
             .sorted { $0.pid < $1.pid }
-            .map { HuskOtherSession(pid: $0.pid, context: context(for: $0)) }
+            .map { HuskOtherSession(pid: $0.pid, agent: "claude", context: context(for: $0)) }
     }
 
     /// Context usage of one session, from its own transcript: ~/.claude/projects/*/<sessionId>.jsonl.

@@ -57,7 +57,18 @@ enum HuskRecentDirs {
         guard HuskSettings.shared.showRecentDirs else { return }
         let standard = { (path: String?) in path.map { ($0 as NSString).standardizingPath } }
         if let requested = baseConfig?.workingDirectory, standard(requested) != standard(parentPwd) { return }
-        let dirs = choices(excluding: standard(parentPwd))
+        show(in: controller, excluding: standard(parentPwd))
+    }
+
+    /// Hook where a window you asked for opens (⌘⇧N, File → New Window, the Dock menu). Windows
+    /// opened elsewhere (relaunch, profiles, AppleScript) don't come through here.
+    static func offer(inNewWindow controller: TerminalController, startingIn current: String?) {
+        guard HuskSettings.shared.showRecentDirs else { return }
+        show(in: controller, excluding: current.map { ($0 as NSString).standardizingPath })
+    }
+
+    private static func show(in controller: TerminalController, excluding current: String?) {
+        let dirs = choices(excluding: current)
         guard !dirs.isEmpty else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             MainActor.assumeIsolated { present(dirs, in: controller) }

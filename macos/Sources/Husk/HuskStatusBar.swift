@@ -76,14 +76,14 @@ struct HuskStatusBar: View {
         }
     }
 
-    /// "+1 session here (ctx: 120k)": other Claude sessions in the same folder, which are
-    /// usually started by accident.
+    /// "+1 session here (ctx: 120k)": other Claude Code or Codex sessions in the same folder,
+    /// which are usually started by accident.
     private func otherSessionsView(_ others: [HuskOtherSession]) -> some View {
         let sizes = others.map { $0.context.map { HuskClaude.formatTokens($0.tokens) } ?? "?" }
         let noun = others.count == 1 ? "session" : "sessions"
         return Text("+\(others.count) \(noun) here (ctx: \(sizes.joined(separator: ", ")))")
             .foregroundStyle(Color.orange)
-            .help("Other Claude Code \(noun) running in this folder: pid \(others.map { String($0.pid) }.joined(separator: ", "))")
+            .help("Other \(noun) running in this folder: \(others.map { "\($0.agent) pid \($0.pid)" }.joined(separator: ", "))")
     }
 
     private func toggleMemory() {

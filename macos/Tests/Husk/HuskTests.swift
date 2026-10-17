@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import Testing
 @testable import Ghostty
 
@@ -108,8 +109,52 @@ struct HuskGitTests {
             HuskClaudeSession(pid: 300, sessionId: "c", cwd: "/p"),
             HuskClaudeSession(pid: 200, sessionId: "b", cwd: "/p/sub"),
         ]
-        #expect(HuskClaude.others(of: sessions[0], among: sessions).map(\.pid) == [300])
-        #expect(HuskClaude.others(of: sessions[2], among: sessions).isEmpty)
+        #expect(HuskClaude.others(in: "/p", excluding: 100, among: sessions).map(\.pid) == [300])
+        #expect(HuskClaude.others(in: "/p/sub", excluding: 200, among: sessions).isEmpty)
+    }
+
+    /// Codex sessions count too, each with the folder's newest Codex conversation as its context.
+    @Test func listsCodexSessionsInTheSameFolder() {
+        let saved = HuskCodex.databasePath
+        HuskCodex.databasePath = "/nonexistent/state.sqlite"
+        defer { HuskCodex.databasePath = saved }
+        let sessions = [
+            HuskCodexSession(pid: 400, cwd: "/p"),
+            HuskCodexSession(pid: 500, cwd: "/p"),
+            HuskCodexSession(pid: 600, cwd: "/q"),
+        ]
+        // From a Claude tab in /p: both Codex sessions.
+        #expect(HuskCodex.others(in: "/p", excluding: 100, among: sessions).map(\.pid) == [400, 500])
+        // From the Codex tab with pid 400: only the other one.
+        #expect(HuskCodex.others(in: "/p", excluding: 400, among: sessions).map(\.agent) == ["codex"])
+    }
+
+    /// A newer reviewer run in the folder (no token counts) doesn't hide the conversation's context.
+    @Test func skipsCodexReviewerThreads() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("husk-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rollout = root.appendingPathComponent("cli.jsonl")
+        let tokens = #"{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":5000,"cached_input_tokens":1000,"output_tokens":10}}}}"#
+        try tokens.write(to: rollout, atomically: true, encoding: .utf8)
+        let review = root.appendingPathComponent("review.jsonl")
+        try "".write(to: review, atomically: true, encoding: .utf8)
+
+        let dbPath = root.appendingPathComponent("state.sqlite").path
+        var db: OpaquePointer?
+        try #require(sqlite3_open(dbPath, &db) == SQLITE_OK)
+        let sql = """
+            CREATE TABLE threads (rollout_path TEXT, model TEXT, cwd TEXT, archived INTEGER, updated_at INTEGER, source TEXT);
+            INSERT INTO threads VALUES ('\(rollout.path)', 'gpt-6', '/p', 0, 100, 'cli');
+            INSERT INTO threads VALUES ('\(review.path)', 'codex-auto-review', '/p', 0, 200, '{"subagent":{"other":"guardian"}}');
+            """
+        try #require(sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(db)
+
+        let saved = HuskCodex.databasePath
+        HuskCodex.databasePath = dbPath
+        defer { HuskCodex.databasePath = saved }
+        #expect(HuskCodex.context(for: "/p")?.tokens == 5000)
     }
 
     /// Session files whose process isn't a live `claude` (crashed, or the pid reused) are skipped.

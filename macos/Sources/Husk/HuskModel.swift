@@ -262,6 +262,12 @@ final class HuskModel: ObservableObject {
         queue.async { [weak self] in
             var result: [ObjectIdentifier: HuskTabStatus] = [:]
             let claudeSessions = HuskClaude.liveSessions()
+            let codexSessions = HuskCodex.liveSessions()
+            // Every other Claude Code or Codex session in the folder.
+            let others = { (cwd: String, pid: pid_t) in
+                HuskClaude.others(in: cwd, excluding: pid, among: claudeSessions)
+                    + HuskCodex.others(in: cwd, excluding: pid, among: codexSessions)
+            }
             for snap in snapshots {
                 var status = HuskTabStatus()
                 status.cwd = snap.pwd
@@ -277,9 +283,13 @@ final class HuskModel: ObservableObject {
                     case "claude":
                         if let session = HuskClaude.session(foregroundPid: snap.foregroundPid, among: claudeSessions) {
                             status.agentContext = HuskClaude.context(for: session)
-                            status.otherSessions = HuskClaude.others(of: session, among: claudeSessions)
+                            status.otherSessions = others(session.cwd, session.pid)
                         }
-                    case "codex": status.agentContext = HuskCodex.context(for: pwd)
+                    case "codex":
+                        status.agentContext = HuskCodex.context(for: pwd)
+                        if let session = HuskCodex.session(foregroundPid: snap.foregroundPid, among: codexSessions) {
+                            status.otherSessions = others(session.cwd, session.pid)
+                        }
                     default: break
                     }
                 }
