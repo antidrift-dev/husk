@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The spec files for the focused tab's project, listed in a drawer that slides up from the bottom
 /// (View → Show Specs, or ⌘S then ⌘P). husk only reads them: the list is whatever files are there.
@@ -92,21 +93,89 @@ enum HuskSpecs {
         return Spec(url: url, title: title, modified: modified)
     }
 
-    /// Opens the config file, creating it with an example first.
-    static func openConfig() {
+    /// Creates the config file with a comment explaining it, if it isn't there yet.
+    private static func ensureConfig() {
         let fm = FileManager.default
-        if !fm.fileExists(atPath: configURL.path) {
-            try? fm.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let example = """
-                # Where each project's specs live, for the Specs panel (View → Show Specs, or ⌘S then ⌘P).
-                # project folder = specs folder (or a single file)
-                # ~/Projects/myapp = ~/Projects/myapp/specs
+        guard !fm.fileExists(atPath: configURL.path) else { return }
+        try? fm.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let example = """
+            # Where each project's specs live, for the Specs drawer (View → Show Specs, or ⌘S then ⌘P).
+            # project folder = specs folder (or a single file)
+            # ~/Projects/myapp = ~/Projects/myapp/specs
 
-                """
-            try? example.write(to: configURL, atomically: true, encoding: .utf8)
-        }
+            """
+        try? example.write(to: configURL, atomically: true, encoding: .utf8)
+    }
+
+    /// Opens the config file in TextEdit, creating it first.
+    static func openConfig() {
+        ensureConfig()
         NSWorkspace.shared.open([configURL], withApplicationAt: URL(fileURLWithPath: "/System/Applications/TextEdit.app"),
                                 configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    /// Adds a `project = specs` line to the config.
+    static func add(project: String, specs: String) {
+        ensureConfig()
+        let tilde = { (path: String) in (path as NSString).abbreviatingWithTildeInPath }
+        var text = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
+        if !text.isEmpty && !text.hasSuffix("\n") { text += "\n" }
+        text += "\(tilde(project)) = \(tilde(specs))\n"
+        try? text.write(to: configURL, atomically: true, encoding: .utf8)
+    }
+
+    /// The project a directory belongs to, for a new config line: its git repo, or else the
+    /// directory itself.
+    static func project(for dir: String) -> String {
+        HuskGit.info(for: dir)?.root ?? (dir as NSString).standardizingPath
+    }
+
+    /// Asks for the specs folder (or file) of the project `dir` is in, and adds it to the config.
+    @MainActor
+    static func promptToAdd(for dir: String, in window: NSWindow?, then done: @escaping () -> Void) {
+        let project = project(for: dir)
+        let panel = NSOpenPanel()
+        panel.message = "Choose the specs folder (or file) for \((project as NSString).lastPathComponent)"
+        panel.prompt = "Add"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(fileURLWithPath: project)
+        let finish = { (response: NSApplication.ModalResponse) in
+            guard response == .OK, let url = panel.url else { return }
+            add(project: project, specs: url.path)
+            done()
+        }
+        if let window { panel.beginSheetModal(for: window, completionHandler: finish) } else { finish(panel.runModal()) }
+    }
+
+    // MARK: Opening specs
+
+    /// Apps registered to edit .md files, by name. (Every app that can merely open one includes
+    /// browsers and the like; the editor role is the short list.)
+    static func editors() -> [URL] {
+        let md = (UTType(filenameExtension: "md") ?? .plainText).identifier as CFString
+        let ids = (LSCopyAllRoleHandlersForContentType(md, .editor)?.takeRetainedValue() as? [String]) ?? []
+        var seen = Set<String>()
+        return ids.compactMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
+            .filter { seen.insert($0.path).inserted }
+            .sorted { appName($0).localizedCaseInsensitiveCompare(appName($1)) == .orderedAscending }
+    }
+
+    static func appName(_ app: URL) -> String {
+        FileManager.default.displayName(atPath: app.path).replacingOccurrences(of: ".app", with: "")
+    }
+
+    /// Opens a spec in the app chosen in Settings (Features → Open specs with), or the Mac's
+    /// default app for it.
+    static func open(_ spec: URL, with app: URL? = nil) {
+        let chosen = HuskSettings.shared.specsOpenWith
+        let app = app ?? (chosen.isEmpty ? nil : URL(fileURLWithPath: chosen))
+        guard let app, FileManager.default.fileExists(atPath: app.path) else {
+            NSWorkspace.shared.open(spec)
+            return
+        }
+        NSWorkspace.shared.open([spec], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
     }
 
     // MARK: Menu and shortcut
@@ -236,9 +305,9 @@ struct HuskSpecsPanel: View {
             header
             Divider()
             if location == nil {
-                empty("No specs folder for this project.", button: "Edit ~/.husk/config/specs")
+                missing
             } else if groups.isEmpty {
-                empty("No .md files in \((location!.specs as NSString).abbreviatingWithTildeInPath).", button: nil)
+                empty("No .md files in \((location!.specs as NSString).abbreviatingWithTildeInPath).")
             } else {
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 0) {
@@ -298,7 +367,7 @@ struct HuskSpecsPanel: View {
     }
 
     private func row(_ spec: HuskSpecs.Spec) -> some View {
-        Button(action: { NSWorkspace.shared.open(spec.url) }) {
+        Button(action: { HuskSpecs.open(spec.url) }) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(spec.title).lineLimit(2)
                 Text(spec.modified, format: .relative(presentation: .named))
@@ -312,14 +381,41 @@ struct HuskSpecsPanel: View {
         }
         .buttonStyle(.plain)
         .help(spec.url.path)
+        .contextMenu {
+            Menu("Open With") {
+                ForEach(HuskSpecs.editors(), id: \.self) { app in
+                    Button(HuskSpecs.appName(app)) { HuskSpecs.open(spec.url, with: app) }
+                }
+            }
+        }
     }
 
-    private func empty(_ text: String, button: String?) -> some View {
+    /// No specs location for this tab's project yet: offer to add one.
+    private var missing: some View {
+        let dir = controller?.focusedSurface?.pwd
+        let project = dir.map { (HuskSpecs.project(for: $0) as NSString).lastPathComponent } ?? "this project"
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("No specs folder for \(project) yet.").foregroundStyle(.secondary)
+            HStack(spacing: 12) {
+                Button("Add Specs Folder…") {
+                    guard let dir else { return }
+                    HuskSpecs.promptToAdd(for: dir, in: controller?.window, then: reload)
+                }
+                .disabled(dir == nil)
+                Button("Edit config") { HuskSpecs.openConfig() }
+                    .buttonStyle(.link)
+            }
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+    }
+
+    private func empty(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(text).foregroundStyle(.secondary)
-            if let button {
-                Button(button) { HuskSpecs.openConfig() }
-            }
+            Button("Edit config") { HuskSpecs.openConfig() }
+                .buttonStyle(.link)
             Spacer()
         }
         .frame(maxWidth: .infinity, alignment: .leading)

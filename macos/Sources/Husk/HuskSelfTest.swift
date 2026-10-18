@@ -204,6 +204,17 @@ enum HuskSelfTest {
         report["codexSessions"] = HuskCodex.liveSessions().map { session in
             "\(session.pid) \(session.cwd) ctx=\(HuskCodex.context(for: session.cwd)?.tokens ?? -1)"
         }
+        report["specsEditors"] = HuskSpecs.editors().map(HuskSpecs.appName)
+        // Add Specs Folder writes a line the lookup then finds: a project with no git repo maps
+        // itself, and being deeper than the /tmp line, wins over it.
+        let added = dir.appendingPathComponent("added-project")
+        try? FileManager.default.createDirectory(at: added.appendingPathComponent("specs"), withIntermediateDirectories: true)
+        if HuskSpecs.location(for: added.path)?.project != HuskSpecs.project(for: added.path) {
+            HuskSpecs.add(project: HuskSpecs.project(for: added.path), specs: added.appendingPathComponent("specs").path)
+        }
+        report["specsAddedLocation"] = HuskSpecs.location(for: added.path)?.specs ?? ""
+        report["specsConfigLines"] = ((try? String(contentsOf: HuskSpecs.configURL, encoding: .utf8)) ?? "")
+            .split(separator: "\n").map(String.init)
         report["recentDirs"] = HuskRecentDirs.all
         report["fileMenuHasProfiles"] = NSApp.mainMenu?.item(withTitle: "File")?.submenu?.item(withTitle: "Open Profile") != nil
 
