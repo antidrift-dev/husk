@@ -420,11 +420,9 @@ struct HuskSpecsPanel: View {
         }
     }
 
-    /// No specs location for this tab's project yet: point at the folder+ button.
+    /// No specs location for this tab's project yet.
     private var missing: some View {
-        let project = controller?.focusedSurface?.pwd.map { (HuskSpecs.project(for: $0) as NSString).lastPathComponent }
-        return message(Text("No specs folder for \(project ?? "this project") yet. Add one with ")
-            + Text(Image(systemName: "folder.badge.plus")) + Text(" above."))
+        message(Text("No specifications directory found."))
     }
 
     private var empty: some View {
