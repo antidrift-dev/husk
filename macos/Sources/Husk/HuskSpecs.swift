@@ -207,6 +207,8 @@ struct HuskSpecsOverlay: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: max(180, geo.size.height / 3))
                             .background(background)
+                            // The arrow, not the terminal's text cursor.
+                            .backport.pointerStyle(.default)
                     }
                     .shadow(color: .black.opacity(0.25), radius: 8)
                     .transition(.move(edge: .bottom))
@@ -266,7 +268,6 @@ struct HuskSpecsPanel: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .backport.pointerStyle(.link)
             .help("Hide Specs (⌘S ⌘P)")
         }
         .padding(.horizontal, 12)
