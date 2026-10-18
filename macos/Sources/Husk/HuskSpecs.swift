@@ -262,7 +262,7 @@ struct HuskSpecsPanel: View {
             }
             Spacer()
             Button(action: { controller?.husk.specs.isOpen = false }) {
-                Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
+                Image(systemName: "chevron.down").font(.system(size: 11, weight: .semibold))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
