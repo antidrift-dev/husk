@@ -59,7 +59,8 @@ enum HuskSelfTest {
                 after(4) {
                     // ⌘S then ⌘P in the /tmp tab opens its Specs drawer, the keys a moment apart
                     // like a person's (posted together, the second is sometimes dropped).
-                    if let tmpTab = HuskModel.tabs(of: first.window).last, let window = tmpTab.window {
+                    let specsTab = HuskModel.tabs(of: first.window).last
+                    if let window = specsTab?.window {
                         window.makeKeyAndOrderFront(nil)
                         for (delay, chars, code) in [(0.0, "s", UInt16(1)), (0.3, "p", UInt16(35))] {
                             after(delay) {
@@ -123,7 +124,17 @@ enum HuskSelfTest {
                                     NSApp.postEvent(q, atStart: false)
                                 }
                             }
+                            // Escape closes the drawer that ⌘S ⌘P opened.
+                            if let window = specsTab?.window,
+                               let esc = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+                                                          timestamp: ProcessInfo.processInfo.systemUptime,
+                                                          windowNumber: window.windowNumber, context: nil,
+                                                          characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}",
+                                                          isARepeat: false, keyCode: 53) {
+                                NSApp.postEvent(esc, atStart: false)
+                            }
                             after(0.5) {
+                                extra["specsClosedByEscape"] = specsTab.map { !$0.husk.specs.isOpen } ?? false
                                 extra["quitMessageAfterTwoPresses"] = HuskQuitGuard.hudText ?? ""
                                 // ⌘⇧N: a new window offers recent directories too.
                                 let before = Set(TerminalController.all.map(ObjectIdentifier.init))

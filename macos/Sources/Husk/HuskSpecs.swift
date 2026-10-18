@@ -212,7 +212,8 @@ enum HuskSpecs {
     @MainActor private static var monitor: Any?
 
     /// ⌘S then ⌘P (or P) toggles the focused tab's panel. ⌘S on its own does nothing (nothing else
-    /// uses it); Escape cancels; any other key after ⌘S goes through as usual.
+    /// uses it); Escape cancels; any other key after ⌘S goes through as usual. Escape also closes
+    /// an open drawer.
     @MainActor
     private static func installChord() {
         guard monitor == nil else { return }
@@ -242,6 +243,11 @@ enum HuskSpecs {
         }
         if key == "s" && mods == .command && !event.isARepeat {
             chordStarted = Date()
+            return nil
+        }
+        // Escape closes an open drawer (and doesn't reach the terminal).
+        if event.keyCode == 53 && mods.isEmpty && controller.husk.specs.isOpen {
+            controller.husk.specs.isOpen = false
             return nil
         }
         return event
@@ -356,7 +362,7 @@ struct HuskSpecsPanel: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .help("Hide Specs (⌘S ⌘P)")
+            .help("Hide Specs (Escape, or ⌘S ⌘P)")
         }
         .padding(.horizontal, 12)
         .frame(height: 28)
