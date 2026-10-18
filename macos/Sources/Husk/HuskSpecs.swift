@@ -178,16 +178,65 @@ enum HuskSpecs {
         FileManager.default.displayName(atPath: app.path).replacingOccurrences(of: ".app", with: "")
     }
 
-    /// Opens a spec in the app chosen in Settings (Features → Open specs with), or the Mac's
-    /// default app for it.
-    static func open(_ spec: URL, with app: URL? = nil) {
+    /// Opens a spec in `app`, or else the app saved in Settings (Features → Open specs with). With
+    /// none saved yet, asks which app to use and saves it: the Mac's default for .md is often
+    /// something odd (calibre, here).
+    @MainActor
+    static func open(_ spec: URL, with app: URL? = nil, in window: NSWindow? = nil) {
+        if let app { launch(spec, in: app); return }
         let chosen = HuskSettings.shared.specsOpenWith
-        let app = app ?? (chosen.isEmpty ? nil : URL(fileURLWithPath: chosen))
-        guard let app, FileManager.default.fileExists(atPath: app.path) else {
-            NSWorkspace.shared.open(spec)
+        if !chosen.isEmpty, FileManager.default.fileExists(atPath: chosen) {
+            launch(spec, in: URL(fileURLWithPath: chosen))
             return
         }
+        askForApp(in: window) { app in
+            HuskSettings.shared.specsOpenWith = app.path
+            launch(spec, in: app)
+        }
+    }
+
+    private static func launch(_ spec: URL, in app: URL) {
         NSWorkspace.shared.open([spec], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    /// "Open specs with": the .md editors, or Other… to pick any app.
+    @MainActor
+    private static func askForApp(in window: NSWindow?, then done: @escaping (URL) -> Void) {
+        let apps = editors()
+        let alert = NSAlert()
+        alert.messageText = "Open specs with"
+        alert.informativeText = "husk will remember this. You can change it in Settings → Features."
+        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 240, height: 26), pullsDown: false)
+        for app in apps {
+            popup.addItem(withTitle: appName(app))
+            let icon = NSWorkspace.shared.icon(forFile: app.path)
+            icon.size = NSSize(width: 16, height: 16)
+            popup.lastItem?.image = icon
+        }
+        if !apps.isEmpty { popup.menu?.addItem(.separator()) }
+        popup.addItem(withTitle: "Other…")
+        if let textEdit = apps.firstIndex(where: { $0.lastPathComponent == "TextEdit.app" }) {
+            popup.selectItem(at: textEdit)
+        }
+        alert.accessoryView = popup
+        alert.addButton(withTitle: "Open")
+        alert.addButton(withTitle: "Cancel")
+
+        let finish = { (response: NSApplication.ModalResponse) in
+            guard response == .alertFirstButtonReturn else { return }
+            let index = popup.indexOfSelectedItem
+            if index < apps.count {
+                done(apps[index])
+                return
+            }
+            let panel = NSOpenPanel()
+            panel.directoryURL = URL(fileURLWithPath: "/Applications")
+            panel.allowedContentTypes = [.application]
+            panel.prompt = "Choose"
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            done(url)
+        }
+        if let window { alert.beginSheetModal(for: window, completionHandler: finish) } else { finish(alert.runModal()) }
     }
 
     // MARK: Menu and shortcut
@@ -391,7 +440,7 @@ struct HuskSpecsPanel: View {
     }
 
     private func row(_ spec: HuskSpecs.Spec) -> some View {
-        Button(action: { HuskSpecs.open(spec.url) }) {
+        Button(action: { HuskSpecs.open(spec.url, in: controller?.window) }) {
             HStack {
                 Text(spec.title).lineLimit(1)
                 Spacer(minLength: 12)

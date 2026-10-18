@@ -19,7 +19,7 @@ final class HuskSettings: ObservableObject {
     @AppStorage("HuskNotifyOnFinish") var notifyOnFinish = true { willSet { objectWillChange.send() } }
     /// Not part of the config layer: new tabs offer recent directories (HuskRecentDirs).
     @AppStorage("HuskShowRecentDirs") var showRecentDirs = true { willSet { objectWillChange.send() } }
-    /// The app specs open in from the Specs drawer; empty for the Mac's default app.
+    /// The app specs open in from the Specs drawer; empty until the first one is opened, which asks.
     @AppStorage("HuskSpecsOpenWith") var specsOpenWith = "" { willSet { objectWillChange.send() } }
 
     /// The config layer these settings produce.
@@ -160,8 +160,10 @@ struct HuskSettingsView: View {
                 Toggle("Notify when a long command finishes", isOn: $settings.notifyOnFinish)
                 Toggle("Show recent directories in new tabs", isOn: $settings.showRecentDirs)
                 Picker("Open specs with", selection: $settings.specsOpenWith) {
-                    Text("Default app").tag("")
-                    ForEach(HuskSpecs.editors(), id: \.self) { app in
+                    Text("Ask").tag("")
+                    // The .md editors, plus the saved app if it was picked with Other….
+                    let saved = settings.specsOpenWith.isEmpty ? [] : [URL(fileURLWithPath: settings.specsOpenWith)]
+                    ForEach(HuskSpecs.editors() + saved.filter { !HuskSpecs.editors().contains($0) }, id: \.self) { app in
                         Text(HuskSpecs.appName(app)).tag(app.path)
                     }
                 }

@@ -79,6 +79,19 @@ enum HuskSelfTest {
                         let tmpTab = HuskModel.tabs(of: first.window).last
                         extra["specsOpen"] = HuskModel.tabs(of: first.window).map { $0.husk.specs.isOpen }
                         snapshot(specsTab?.window, to: outDir.appendingPathComponent("specs.png"))
+                        // With no app saved, clicking a spec asks which app to use (cancelled here).
+                        if HuskSettings.shared.specsOpenWith.isEmpty, let window = specsTab?.window,
+                           let spec = HuskSpecs.location(for: specsTab?.focusedSurface?.pwd)
+                            .flatMap({ HuskSpecs.scan($0.specs).first?.specs.first }) {
+                            HuskSpecs.open(spec.url, in: window)
+                            after(0.5) {
+                                let sheet = window.attachedSheet
+                                extra["specsAsksForApp"] = sheet?.contentView?.subviews
+                                    .compactMap { ($0 as? NSTextField)?.stringValue }
+                                    .first { $0 == "Open specs with" } != nil
+                                if let sheet { window.endSheet(sheet, returnCode: .alertSecondButtonReturn) }
+                            }
+                        }
                         extra["specs"] = HuskSpecs.location(for: tmpTab?.focusedSurface?.pwd)
                             .map { HuskSpecs.scan($0.specs).map { "\($0.name.isEmpty ? "/" : $0.name): \($0.specs.map(\.title))" } } ?? []
                         // Reorder: move the last tab to the front
