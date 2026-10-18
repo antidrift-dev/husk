@@ -266,6 +266,7 @@ struct HuskSpecsPanel: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
+            .backport.pointerStyle(.link)
             .help("Hide Specs (⌘S ⌘P)")
         }
         .padding(.horizontal, 12)
