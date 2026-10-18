@@ -1,14 +1,14 @@
 import AppKit
 import SwiftUI
 
-/// The spec files for the focused tab's project, listed in a panel that slides in from the right
+/// The spec files for the focused tab's project, listed in a drawer that slides up from the bottom
 /// (View → Show Specs, or ⌘S then ⌘P). husk only reads them: the list is whatever files are there.
 ///
 /// Where each project's specs live is set in ~/.husk/config/specs, one line per project:
 ///
 ///     ~/Projects/probeo.io/dashboard = ~/Projects/probeo.io/dashboard/specs
 ///
-/// The right side can be a folder (its .md files, grouped by subfolder) or a single file.
+/// The right-hand side can be a folder (its .md files, grouped by subfolder) or a single file.
 enum HuskSpecs {
     static var configURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".husk/config/specs")
 
@@ -142,7 +142,8 @@ enum HuskSpecs {
 
     @MainActor
     private static func handleChord(_ event: NSEvent) -> NSEvent? {
-        guard let controller = NSApp.keyWindow?.windowController as? TerminalController else {
+        // The window the key went to; the key window when there is none.
+        guard let controller = (event.window ?? NSApp.keyWindow)?.windowController as? TerminalController else {
             chordStarted = nil
             return event
         }
@@ -189,40 +190,42 @@ final class HuskSpecsState: ObservableObject {
     @Published var isOpen = false
 }
 
-/// Hosts the panel over the right edge of the terminal, sliding in and out.
+/// Hosts the panel as a drawer over the bottom of the terminal, sliding up and down. The
+/// terminal keeps its size.
 struct HuskSpecsOverlay: View {
     weak var controller: TerminalController?
     @ObservedObject var state: HuskSpecsState
     let background: Color
 
     var body: some View {
-        ZStack(alignment: .trailing) {
-            if state.isOpen {
-                HStack(spacing: 0) {
-                    Divider()
-                    HuskSpecsPanel(controller: controller)
-                        .frame(width: 280)
-                        .frame(maxHeight: .infinity)
-                        .background(background)
+        GeometryReader { geo in
+            ZStack(alignment: .bottom) {
+                if state.isOpen {
+                    VStack(spacing: 0) {
+                        Divider()
+                        HuskSpecsPanel(controller: controller)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: max(180, geo.size.height / 3))
+                            .background(background)
+                    }
+                    .shadow(color: .black.opacity(0.25), radius: 8)
+                    .transition(.move(edge: .bottom))
                 }
-                .shadow(color: .black.opacity(0.25), radius: 8)
-                .transition(.move(edge: .trailing))
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
         .clipped()
         .animation(.easeInOut(duration: 0.2), value: state.isOpen)
     }
 }
 
-/// The panel itself: the project's specs, grouped by subfolder; a click opens one.
+/// The panel itself: the project's specs, one column per subfolder; a click opens one.
 struct HuskSpecsPanel: View {
     @ObservedObject private var model = HuskModel.shared
     weak var controller: TerminalController?
 
     @State private var location: (project: String, specs: String)?
     @State private var groups: [HuskSpecs.Group] = []
-    @State private var collapsed: Set<String> = []
 
     private let refresh = Timer.publish(every: 3, on: .main, in: .common).autoconnect()
 
@@ -235,16 +238,13 @@ struct HuskSpecsPanel: View {
             } else if groups.isEmpty {
                 empty("No .md files in \((location!.specs as NSString).abbreviatingWithTildeInPath).", button: nil)
             } else {
-                ScrollView(.vertical) {
-                    VStack(alignment: .leading, spacing: 2) {
+                ScrollView(.horizontal) {
+                    HStack(alignment: .top, spacing: 0) {
                         ForEach(groups) { group in
-                            if !group.name.isEmpty { groupHeader(group) }
-                            if !collapsed.contains(group.name) {
-                                ForEach(group.specs) { row($0) }
-                            }
+                            column(group)
+                            Divider()
                         }
                     }
-                    .padding(8)
                 }
             }
         }
@@ -269,26 +269,30 @@ struct HuskSpecsPanel: View {
             .help("Hide Specs (⌘S ⌘P)")
         }
         .padding(.horizontal, 12)
-        .frame(height: 32)
+        .frame(height: 28)
     }
 
-    private func groupHeader(_ group: HuskSpecs.Group) -> some View {
-        let isCollapsed = collapsed.contains(group.name)
-        return Button(action: {
-            if isCollapsed { collapsed.remove(group.name) } else { collapsed.insert(group.name) }
-        }) {
+    /// One subfolder: its name and count, then its specs, scrolling on their own.
+    private func column(_ group: HuskSpecs.Group) -> some View {
+        let name = group.name.isEmpty ? ((location?.specs ?? "") as NSString).lastPathComponent : group.name
+        return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 4) {
-                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down").font(.system(size: 9, weight: .semibold))
-                Text(group.name).font(.system(size: 11, weight: .semibold))
+                Text(name).font(.system(size: 11, weight: .semibold))
                 Text("\(group.specs.count)").foregroundStyle(.tertiary)
-                Spacer()
             }
             .foregroundStyle(.secondary)
-            .contentShape(Rectangle())
+            .padding(.horizontal, 12)
             .padding(.top, 8)
-            .padding(.bottom, 2)
+            .padding(.bottom, 4)
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(group.specs) { row($0) }
+                }
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
+            }
         }
-        .buttonStyle(.plain)
+        .frame(width: 260)
     }
 
     private func row(_ spec: HuskSpecs.Spec) -> some View {
@@ -316,6 +320,7 @@ struct HuskSpecsPanel: View {
             }
             Spacer()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
     }
 

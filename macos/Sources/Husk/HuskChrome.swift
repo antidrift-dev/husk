@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Wraps Ghostty's terminal view with Husk's sidebar (left), status bar (bottom) and the Specs
-/// panel, which slides in over the right edge.
+/// drawer, which slides up over the bottom of the terminal.
 /// Both are painted with the terminal theme's background so they match it.
 struct HuskChrome<Content: View>: View {
     @ObservedObject private var model = HuskModel.shared
