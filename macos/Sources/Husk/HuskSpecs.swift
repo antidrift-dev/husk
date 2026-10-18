@@ -309,7 +309,7 @@ struct HuskSpecsOverlay: View {
     }
 }
 
-/// The panel itself: the project's specs, one column per subfolder; a click opens one.
+/// The panel itself: the project's specs in one list, a heading per subfolder; a click opens one.
 struct HuskSpecsPanel: View {
     @ObservedObject private var model = HuskModel.shared
     weak var controller: TerminalController?
@@ -328,13 +328,14 @@ struct HuskSpecsPanel: View {
             } else if groups.isEmpty {
                 empty
             } else {
-                ScrollView(.horizontal) {
-                    HStack(alignment: .top, spacing: 0) {
+                ScrollView(.vertical) {
+                    VStack(alignment: .leading, spacing: 0) {
                         ForEach(groups) { group in
-                            column(group)
-                            Divider()
+                            section(group)
                         }
                     }
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 8)
                 }
             }
         }
@@ -374,38 +375,32 @@ struct HuskSpecsPanel: View {
         HuskSpecs.promptToAdd(for: dir, in: controller?.window, then: reload)
     }
 
-    /// One subfolder: its name and count, then its specs, scrolling on their own.
-    private func column(_ group: HuskSpecs.Group) -> some View {
+    /// One subfolder in the list: its name and count, then its specs.
+    private func section(_ group: HuskSpecs.Group) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 4) {
                 Text(group.name).font(.system(size: 11, weight: .semibold))
                 Text("\(group.specs.count)").foregroundStyle(.tertiary)
             }
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 4)
             .padding(.top, 8)
-            .padding(.bottom, 4)
-            ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(group.specs) { row($0) }
-                }
-                .padding(.horizontal, 8)
-                .padding(.bottom, 8)
-            }
+            .padding(.bottom, 2)
+            ForEach(group.specs) { row($0) }
         }
-        .frame(width: 260)
     }
 
     private func row(_ spec: HuskSpecs.Spec) -> some View {
         Button(action: { HuskSpecs.open(spec.url) }) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(spec.title).lineLimit(2)
+            HStack {
+                Text(spec.title).lineLimit(1)
+                Spacer(minLength: 12)
                 Text(spec.modified, format: .relative(presentation: .named))
-                    .font(.system(size: 10))
+                    .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 4)
+            .padding(.vertical, 3)
             .padding(.horizontal, 4)
             .contentShape(Rectangle())
         }

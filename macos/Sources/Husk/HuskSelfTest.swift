@@ -78,6 +78,7 @@ enum HuskSelfTest {
                     after(2) {
                         let tmpTab = HuskModel.tabs(of: first.window).last
                         extra["specsOpen"] = HuskModel.tabs(of: first.window).map { $0.husk.specs.isOpen }
+                        snapshot(specsTab?.window, to: outDir.appendingPathComponent("specs.png"))
                         extra["specs"] = HuskSpecs.location(for: tmpTab?.focusedSurface?.pwd)
                             .map { HuskSpecs.scan($0.specs).map { "\($0.name.isEmpty ? "/" : $0.name): \($0.specs.map(\.title))" } } ?? []
                         // Reorder: move the last tab to the front
@@ -235,10 +236,16 @@ enum HuskSelfTest {
         if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) {
             try? data.write(to: dir.appendingPathComponent("report.json"))
         }
-        if let view = tabs.last?.window?.contentView?.superview ?? tabs.last?.window?.contentView,
+        snapshot(tabs.last?.window, to: dir.appendingPathComponent("window.png"))
+    }
+
+    /// The window's SwiftUI chrome rendered offscreen, as a PNG.
+    @MainActor
+    private static func snapshot(_ window: NSWindow?, to file: URL) {
+        if let view = window?.contentView?.superview ?? window?.contentView,
            let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
             view.cacheDisplay(in: view.bounds, to: rep)
-            try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent("window.png"))
+            try? rep.representation(using: .png, properties: [:])?.write(to: file)
         }
     }
 
