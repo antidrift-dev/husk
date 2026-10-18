@@ -57,16 +57,19 @@ enum HuskSelfTest {
                     _ = ghostty_surface_binding_action(surface, action, UInt(action.lengthOfBytes(using: .utf8)))
                 }
                 after(4) {
-                    // ⌘S then ⌘P in the /tmp tab opens its Specs panel.
+                    // ⌘S then ⌘P in the /tmp tab opens its Specs drawer, the keys a moment apart
+                    // like a person's (posted together, the second is sometimes dropped).
                     if let tmpTab = HuskModel.tabs(of: first.window).last, let window = tmpTab.window {
                         window.makeKeyAndOrderFront(nil)
-                        for (chars, code) in [("s", UInt16(1)), ("p", UInt16(35))] {
-                            if let key = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
-                                                          timestamp: ProcessInfo.processInfo.systemUptime,
-                                                          windowNumber: window.windowNumber, context: nil,
-                                                          characters: chars, charactersIgnoringModifiers: chars,
-                                                          isARepeat: false, keyCode: code) {
-                                NSApp.postEvent(key, atStart: false)
+                        for (delay, chars, code) in [(0.0, "s", UInt16(1)), (0.3, "p", UInt16(35))] {
+                            after(delay) {
+                                if let key = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+                                                              timestamp: ProcessInfo.processInfo.systemUptime,
+                                                              windowNumber: window.windowNumber, context: nil,
+                                                              characters: chars, charactersIgnoringModifiers: chars,
+                                                              isARepeat: false, keyCode: code) {
+                                    NSApp.postEvent(key, atStart: false)
+                                }
                             }
                         }
                     }
@@ -212,7 +215,7 @@ enum HuskSelfTest {
         if HuskSpecs.location(for: added.path)?.project != HuskSpecs.project(for: added.path) {
             HuskSpecs.add(project: HuskSpecs.project(for: added.path), specs: added.appendingPathComponent("specs").path)
         }
-        report["specsAddedLocation"] = HuskSpecs.location(for: added.path)?.specs ?? ""
+        report["specsAddedLocation"] = HuskSpecs.location(for: added.path)?.specs ?? []
         report["specsConfigLines"] = ((try? String(contentsOf: HuskSpecs.configURL, encoding: .utf8)) ?? "")
             .split(separator: "\n").map(String.init)
         report["recentDirs"] = HuskRecentDirs.all

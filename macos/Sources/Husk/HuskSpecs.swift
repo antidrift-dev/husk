@@ -5,11 +5,13 @@ import UniformTypeIdentifiers
 /// The spec files for the focused tab's project, listed in a drawer that slides up from the bottom
 /// (View → Show Specs, or ⌘S then ⌘P). husk only reads them: the list is whatever files are there.
 ///
-/// Where each project's specs live is set in ~/.husk/config/specs, one line per project:
+/// Where each project's specs live is kept in ~/.husk/config/specs, one line per folder, added with
+/// the drawer's folder+ button (nobody edits the file by hand):
 ///
 ///     ~/Projects/probeo.io/dashboard = ~/Projects/probeo.io/dashboard/specs
 ///
-/// The right-hand side can be a folder (its .md files, grouped by subfolder) or a single file.
+/// A project can have several lines. The right-hand side can be a folder (its .md files, grouped
+/// by subfolder) or a single file.
 enum HuskSpecs {
     static var configURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".husk/config/specs")
 
@@ -21,7 +23,8 @@ enum HuskSpecs {
     }
 
     struct Group: Identifiable, Equatable {
-        /// The subfolder the specs are in, relative to the specs folder; "" for its top level.
+        /// The specs folder's name for its top level, else the subfolder relative to it (prefixed
+        /// with the specs folder's name when the project has more than one).
         let name: String
         let specs: [Spec]
         var id: String { name }
@@ -44,19 +47,33 @@ enum HuskSpecs {
         return trimmed.isEmpty ? "" : ((trimmed as NSString).expandingTildeInPath as NSString).standardizingPath
     }
 
-    /// The specs location for a directory: the mapping whose project folder contains it, the
-    /// deepest one if several do.
-    static func location(for dir: String?) -> (project: String, specs: String)? {
+    /// The specs locations for a directory: the lines for the project folder that contains it,
+    /// the deepest one if several do.
+    static func location(for dir: String?) -> (project: String, specs: [String])? {
         guard let dir else { return nil }
         let path = (dir as NSString).standardizingPath
-        return mappings()
-            .filter { path == $0.project || path.hasPrefix($0.project + "/") }
-            .max { $0.project.count < $1.project.count }
+        let all = mappings()
+        guard let project = all.map(\.project)
+            .filter({ path == $0 || path.hasPrefix($0 + "/") })
+            .max(by: { $0.count < $1.count }) else { return nil }
+        var seen = Set<String>()
+        return (project, all.filter { $0.project == project && seen.insert($0.specs).inserted }.map(\.specs))
     }
 
-    /// The .md files at `path`, grouped by subfolder (top level first, then by name), newest
-    /// first in each group. A file path lists just that file.
-    static func scan(_ path: String) -> [Group] {
+    /// The specs in each location, one after another.
+    static func scan(_ paths: [String]) -> [Group] {
+        paths.flatMap { path in
+            let root = (path as NSString).lastPathComponent
+            return scan(path).map { group in
+                let name = group.name.isEmpty ? root : (paths.count > 1 ? "\(root)/\(group.name)" : group.name)
+                return Group(name: name, specs: group.specs)
+            }
+        }
+    }
+
+    /// The .md files at `path`, grouped by subfolder ("" for the top level, which comes first),
+    /// newest first in each group. A file path lists just that file.
+    private static func scan(_ path: String) -> [Group] {
         let fm = FileManager.default
         var isDir: ObjCBool = false
         guard fm.fileExists(atPath: path, isDirectory: &isDir) else { return [] }
@@ -100,22 +117,17 @@ enum HuskSpecs {
         try? fm.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let example = """
             # Where each project's specs live, for the Specs drawer (View → Show Specs, or ⌘S then ⌘P).
+            # husk adds a line here each time you add a folder with the drawer's folder+ button.
             # project folder = specs folder (or a single file)
-            # ~/Projects/myapp = ~/Projects/myapp/specs
 
             """
         try? example.write(to: configURL, atomically: true, encoding: .utf8)
     }
 
-    /// Opens the config file in TextEdit, creating it first.
-    static func openConfig() {
-        ensureConfig()
-        NSWorkspace.shared.open([configURL], withApplicationAt: URL(fileURLWithPath: "/System/Applications/TextEdit.app"),
-                                configuration: NSWorkspace.OpenConfiguration())
-    }
-
-    /// Adds a `project = specs` line to the config.
+    /// Adds a `project = specs` line to the config, unless it's already there.
     static func add(project: String, specs: String) {
+        let specs = (specs as NSString).standardizingPath
+        guard !mappings().contains(where: { $0.project == project && $0.specs == specs }) else { return }
         ensureConfig()
         let tilde = { (path: String) in (path as NSString).abbreviatingWithTildeInPath }
         var text = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
@@ -295,7 +307,7 @@ struct HuskSpecsPanel: View {
     @ObservedObject private var model = HuskModel.shared
     weak var controller: TerminalController?
 
-    @State private var location: (project: String, specs: String)?
+    @State private var location: (project: String, specs: [String])?
     @State private var groups: [HuskSpecs.Group] = []
 
     private let refresh = Timer.publish(every: 3, on: .main, in: .common).autoconnect()
@@ -307,7 +319,7 @@ struct HuskSpecsPanel: View {
             if location == nil {
                 missing
             } else if groups.isEmpty {
-                empty("No .md files in \((location!.specs as NSString).abbreviatingWithTildeInPath).")
+                empty
             } else {
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 0) {
@@ -332,6 +344,13 @@ struct HuskSpecsPanel: View {
                 Text((location.project as NSString).lastPathComponent).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
+            Button(action: addFolder) {
+                Image(systemName: "folder.badge.plus").font(.system(size: 12))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .disabled(controller?.focusedSurface?.pwd == nil)
+            .help("Add Specs Folder…")
             Button(action: { controller?.husk.specs.isOpen = false }) {
                 Image(systemName: "chevron.down").font(.system(size: 11, weight: .semibold))
             }
@@ -343,12 +362,16 @@ struct HuskSpecsPanel: View {
         .frame(height: 28)
     }
 
+    private func addFolder() {
+        guard let dir = controller?.focusedSurface?.pwd else { return }
+        HuskSpecs.promptToAdd(for: dir, in: controller?.window, then: reload)
+    }
+
     /// One subfolder: its name and count, then its specs, scrolling on their own.
     private func column(_ group: HuskSpecs.Group) -> some View {
-        let name = group.name.isEmpty ? ((location?.specs ?? "") as NSString).lastPathComponent : group.name
-        return VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 4) {
-                Text(name).font(.system(size: 11, weight: .semibold))
+                Text(group.name).font(.system(size: 11, weight: .semibold))
                 Text("\(group.specs.count)").foregroundStyle(.tertiary)
             }
             .foregroundStyle(.secondary)
@@ -390,32 +413,21 @@ struct HuskSpecsPanel: View {
         }
     }
 
-    /// No specs location for this tab's project yet: offer to add one.
+    /// No specs location for this tab's project yet: point at the folder+ button.
     private var missing: some View {
-        let dir = controller?.focusedSurface?.pwd
-        let project = dir.map { (HuskSpecs.project(for: $0) as NSString).lastPathComponent } ?? "this project"
-        return VStack(alignment: .leading, spacing: 8) {
-            Text("No specs folder for \(project) yet.").foregroundStyle(.secondary)
-            HStack(spacing: 12) {
-                Button("Add Specs Folder…") {
-                    guard let dir else { return }
-                    HuskSpecs.promptToAdd(for: dir, in: controller?.window, then: reload)
-                }
-                .disabled(dir == nil)
-                Button("Edit config") { HuskSpecs.openConfig() }
-                    .buttonStyle(.link)
-            }
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        let project = controller?.focusedSurface?.pwd.map { (HuskSpecs.project(for: $0) as NSString).lastPathComponent }
+        return message(Text("No specs folder for \(project ?? "this project") yet. Add one with ")
+            + Text(Image(systemName: "folder.badge.plus")) + Text(" above."))
     }
 
-    private func empty(_ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(text).foregroundStyle(.secondary)
-            Button("Edit config") { HuskSpecs.openConfig() }
-                .buttonStyle(.link)
+    private var empty: some View {
+        let places = (location?.specs ?? []).map { ($0 as NSString).abbreviatingWithTildeInPath }
+        return message(Text("No .md files in \(places.joined(separator: ", "))."))
+    }
+
+    private func message(_ text: Text) -> some View {
+        VStack(alignment: .leading) {
+            text.foregroundStyle(.secondary)
             Spacer()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
