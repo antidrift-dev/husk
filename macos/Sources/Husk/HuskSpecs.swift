@@ -127,7 +127,7 @@ enum HuskSpecs {
 
         @MainActor @objc func toggle(_ sender: NSMenuItem) {
             guard let controller = NSApp.keyWindow?.windowController as? TerminalController else { return }
-            controller.setSpecsOpen(!controller.husk.specs.isOpen)
+            controller.husk.specs.isOpen.toggle()
         }
 
         func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -140,16 +140,10 @@ enum HuskSpecs {
     }
 }
 
-/// Whether a window's Specs panel is open. Every tab in the window carries the same value.
+/// Whether a tab's Specs panel is open. Each tab has its own, since tabs in one window can be in
+/// different projects; a new tab starts with it closed.
 final class HuskSpecsState: ObservableObject {
     @Published var isOpen = false
-}
-
-extension TerminalController {
-    /// Opens or closes the Specs panel in every tab of this window.
-    func setSpecsOpen(_ open: Bool) {
-        for tab in HuskModel.tabs(of: window) { tab.husk.specs.isOpen = open }
-    }
 }
 
 /// Hosts the panel over the right edge of the terminal, sliding in and out.
@@ -224,7 +218,7 @@ struct HuskSpecsPanel: View {
                 Text((location.project as NSString).lastPathComponent).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
-            Button(action: { controller?.setSpecsOpen(false) }) {
+            Button(action: { controller?.husk.specs.isOpen = false }) {
                 Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
             }
             .buttonStyle(.plain)
