@@ -24,6 +24,15 @@ husk has its own bundle ID (`dev.antidrift.husktty`) and config, so it never rea
 - **Status bar:** current directory, git repo and branch (click for upstream, ahead/behind, last commit,
   changes and remotes), memory (click for a per-process breakdown), disk and the foreground process.
 - **Claude Code and Codex context usage** in the status bar.
+- **Same-folder warning:** "+1 session here (ctx: 84k)" in the status bar when another Claude Code or Codex
+  session is running in the same folder, in any terminal. Hover to see which.
+- **Window labels:** Window → Label Window… (or double-click the title) names a window, shown as
+  "husk v0.3.N (label)" and in the Window menu. New tabs and tabs dragged in take the window's label.
+- **Recent directories:** a new tab or window (⌘T, ⌘N, ⌘⇧N) offers the folders you've recently worked in;
+  ⌘1–9 or a click goes there, Escape stays put. Turn it off with "Don't show again" or in Settings.
+- **Specs drawer:** ⌘⇧S then P slides up a list of the project's spec files, a heading per subfolder.
+  Add a specs folder with the folder+ button; click a spec to open it in the app you pick the first time
+  (change it in Settings → Features). Escape closes it. Each tab has its own.
 - **19 Husk themes** in a Theme menu, applied live.
 - **Settings window** (⌘,): theme, font size, ligatures, sidebar, cursor, scrollback, quake hotkey and
   notifications when a command finishes.
