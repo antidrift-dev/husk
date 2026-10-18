@@ -10,6 +10,8 @@ final class HuskControllerState {
     fileprivate var lastComputed = ""
     /// The last directory recorded in HuskRecentDirs for this tab.
     fileprivate var lastVisited: String?
+    /// Whether the window's Specs panel is open (HuskSpecs).
+    let specs = HuskSpecsState()
 }
 
 // MARK: Titles and the window label
@@ -95,6 +97,12 @@ extension BaseTerminalController {
 // MARK: Tabs and the Window menu
 
 extension TerminalController {
+    /// Hook in newTab: a new tab joins its window's project, with its label and Specs panel.
+    func huskJoinWindow(of parent: TerminalController) {
+        windowLabel = parent.windowLabel
+        husk.specs.isOpen = parent.husk.specs.isOpen
+    }
+
     /// Hook at the end of relabelTabs, which runs when the key window changes, a tab closes
     /// or tabs are reordered.
     func huskTabsDidChange() {

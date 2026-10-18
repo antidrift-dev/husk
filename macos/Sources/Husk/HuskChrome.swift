@@ -1,7 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// Wraps Ghostty's terminal view with Husk's sidebar (left) and status bar (bottom).
+/// Wraps Ghostty's terminal view with Husk's sidebar (left), status bar (bottom) and the Specs
+/// panel, which slides in over the right edge.
 /// Both are painted with the terminal theme's background so they match it.
 struct HuskChrome<Content: View>: View {
     @ObservedObject private var model = HuskModel.shared
@@ -20,6 +21,11 @@ struct HuskChrome<Content: View>: View {
             }
             VStack(spacing: 0) {
                 content
+                    .overlay {
+                        if let controller {
+                            HuskSpecsOverlay(controller: controller, state: controller.husk.specs, background: background)
+                        }
+                    }
                 Divider()
                 HuskStatusBar(controller: controller)
                     .background(background)

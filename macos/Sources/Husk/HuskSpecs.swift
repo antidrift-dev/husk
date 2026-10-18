@@ -1,0 +1,296 @@
+import AppKit
+import SwiftUI
+
+/// The spec files for the focused tab's project, listed in a panel that slides in from the right
+/// (View → Show Specs, ⌃⌘P). husk only reads them: the list is whatever files are there.
+///
+/// Where each project's specs live is set in ~/.husk/config/specs, one line per project:
+///
+///     ~/Projects/probeo.io/dashboard = ~/Projects/probeo.io/dashboard/specs
+///
+/// The right side can be a folder (its .md files, grouped by subfolder) or a single file.
+enum HuskSpecs {
+    static var configURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".husk/config/specs")
+
+    struct Spec: Identifiable, Equatable {
+        let url: URL
+        let title: String
+        let modified: Date
+        var id: URL { url }
+    }
+
+    struct Group: Identifiable, Equatable {
+        /// The subfolder the specs are in, relative to the specs folder; "" for its top level.
+        let name: String
+        let specs: [Spec]
+        var id: String { name }
+    }
+
+    /// Project folder → specs location, from the config file. Lines starting with # are comments.
+    static func mappings() -> [(project: String, specs: String)] {
+        guard let text = try? String(contentsOf: configURL, encoding: .utf8) else { return [] }
+        return text.split(whereSeparator: \.isNewline).compactMap { line in
+            let line = line.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty, !line.hasPrefix("#"), let eq = line.firstIndex(of: "=") else { return nil }
+            let project = expand(line[..<eq]), specs = expand(line[line.index(after: eq)...])
+            guard !project.isEmpty, !specs.isEmpty else { return nil }
+            return (project, specs)
+        }
+    }
+
+    private static func expand(_ path: Substring) -> String {
+        let trimmed = path.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? "" : ((trimmed as NSString).expandingTildeInPath as NSString).standardizingPath
+    }
+
+    /// The specs location for a directory: the mapping whose project folder contains it, the
+    /// deepest one if several do.
+    static func location(for dir: String?) -> (project: String, specs: String)? {
+        guard let dir else { return nil }
+        let path = (dir as NSString).standardizingPath
+        return mappings()
+            .filter { path == $0.project || path.hasPrefix($0.project + "/") }
+            .max { $0.project.count < $1.project.count }
+    }
+
+    /// The .md files at `path`, grouped by subfolder (top level first, then by name), newest
+    /// first in each group. A file path lists just that file.
+    static func scan(_ path: String) -> [Group] {
+        let fm = FileManager.default
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: path, isDirectory: &isDir) else { return [] }
+        let root = URL(fileURLWithPath: path)
+        guard isDir.boolValue else { return spec(root).map { [Group(name: "", specs: [$0])] } ?? [] }
+
+        // Relative paths, so the group names don't depend on how the folder's path is spelled
+        // (/tmp vs /private/tmp).
+        var byFolder: [String: [Spec]] = [:]
+        let files = fm.enumerator(atPath: path)
+        while let relative = files?.nextObject() as? String {
+            let parts = relative.split(separator: "/")
+            guard !parts.contains(where: { $0.hasPrefix(".") }),
+                  (relative as NSString).pathExtension.lowercased() == "md",
+                  let spec = spec(root.appendingPathComponent(relative)) else { continue }
+            byFolder[parts.dropLast().joined(separator: "/"), default: []].append(spec)
+        }
+        return byFolder.keys.sorted { ($0.isEmpty ? 0 : 1, $0) < ($1.isEmpty ? 0 : 1, $1) }.map { name in
+            Group(name: name, specs: byFolder[name]!.sorted { $0.modified > $1.modified })
+        }
+    }
+
+    /// A spec's title is its first `# ` heading, or else its file name.
+    private static func spec(_ url: URL) -> Spec? {
+        let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+        var title = url.deletingPathExtension().lastPathComponent
+        if let handle = try? FileHandle(forReadingFrom: url) {
+            defer { try? handle.close() }
+            let head = String(decoding: (try? handle.read(upToCount: 4096)) ?? Data(), as: UTF8.self)
+            if let heading = head.split(whereSeparator: \.isNewline).first(where: { $0.hasPrefix("# ") }) {
+                title = heading.dropFirst(2).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return Spec(url: url, title: title, modified: modified)
+    }
+
+    /// Opens the config file, creating it with an example first.
+    static func openConfig() {
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: configURL.path) {
+            try? fm.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let example = """
+                # Where each project's specs live, for the Specs panel (View → Show Specs, ⌃⌘P).
+                # project folder = specs folder (or a single file)
+                # ~/Projects/myapp = ~/Projects/myapp/specs
+
+                """
+            try? example.write(to: configURL, atomically: true, encoding: .utf8)
+        }
+        NSWorkspace.shared.open([configURL], withApplicationAt: URL(fileURLWithPath: "/System/Applications/TextEdit.app"),
+                                configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    // MARK: Menu
+
+    @MainActor
+    static func installMenu() {
+        guard let view = NSApp.mainMenu?.item(withTitle: "View")?.submenu,
+              view.item(withTitle: "Show Specs") == nil else { return }
+        let item = NSMenuItem(title: "Show Specs", action: #selector(MenuToggle.toggle(_:)), keyEquivalent: "p")
+        item.keyEquivalentModifierMask = [.command, .control]
+        item.target = MenuToggle.shared
+        let after = view.items.firstIndex { $0.title == "Show Sidebar" }.map { $0 + 1 } ?? 0
+        view.insertItem(item, at: after)
+    }
+
+    private final class MenuToggle: NSObject, NSMenuItemValidation {
+        static let shared = MenuToggle()
+
+        @MainActor @objc func toggle(_ sender: NSMenuItem) {
+            guard let controller = NSApp.keyWindow?.windowController as? TerminalController else { return }
+            controller.setSpecsOpen(!controller.husk.specs.isOpen)
+        }
+
+        func validateMenuItem(_ item: NSMenuItem) -> Bool {
+            MainActor.assumeIsolated {
+                let controller = NSApp.keyWindow?.windowController as? TerminalController
+                item.state = controller?.husk.specs.isOpen == true ? .on : .off
+                return controller != nil
+            }
+        }
+    }
+}
+
+/// Whether a window's Specs panel is open. Every tab in the window carries the same value.
+final class HuskSpecsState: ObservableObject {
+    @Published var isOpen = false
+}
+
+extension TerminalController {
+    /// Opens or closes the Specs panel in every tab of this window.
+    func setSpecsOpen(_ open: Bool) {
+        for tab in HuskModel.tabs(of: window) { tab.husk.specs.isOpen = open }
+    }
+}
+
+/// Hosts the panel over the right edge of the terminal, sliding in and out.
+struct HuskSpecsOverlay: View {
+    weak var controller: TerminalController?
+    @ObservedObject var state: HuskSpecsState
+    let background: Color
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            if state.isOpen {
+                HStack(spacing: 0) {
+                    Divider()
+                    HuskSpecsPanel(controller: controller)
+                        .frame(width: 280)
+                        .frame(maxHeight: .infinity)
+                        .background(background)
+                }
+                .shadow(color: .black.opacity(0.25), radius: 8)
+                .transition(.move(edge: .trailing))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        .clipped()
+        .animation(.easeInOut(duration: 0.2), value: state.isOpen)
+    }
+}
+
+/// The panel itself: the project's specs, grouped by subfolder; a click opens one.
+struct HuskSpecsPanel: View {
+    @ObservedObject private var model = HuskModel.shared
+    weak var controller: TerminalController?
+
+    @State private var location: (project: String, specs: String)?
+    @State private var groups: [HuskSpecs.Group] = []
+    @State private var collapsed: Set<String> = []
+
+    private let refresh = Timer.publish(every: 3, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            Divider()
+            if location == nil {
+                empty("No specs folder for this project.", button: "Edit ~/.husk/config/specs")
+            } else if groups.isEmpty {
+                empty("No .md files in \((location!.specs as NSString).abbreviatingWithTildeInPath).", button: nil)
+            } else {
+                ScrollView(.vertical) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(groups) { group in
+                            if !group.name.isEmpty { groupHeader(group) }
+                            if !collapsed.contains(group.name) {
+                                ForEach(group.specs) { row($0) }
+                            }
+                        }
+                    }
+                    .padding(8)
+                }
+            }
+        }
+        .font(.system(size: 12))
+        .onAppear(perform: reload)
+        .onReceive(refresh) { _ in reload() }
+        .onChange(of: model.statuses) { _ in reload() }
+    }
+
+    private var header: some View {
+        HStack {
+            Text("Specs").font(.system(size: 12, weight: .semibold))
+            if let location {
+                Text((location.project as NSString).lastPathComponent).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+            Button(action: { controller?.setSpecsOpen(false) }) {
+                Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Hide Specs (⌃⌘P)")
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 32)
+    }
+
+    private func groupHeader(_ group: HuskSpecs.Group) -> some View {
+        let isCollapsed = collapsed.contains(group.name)
+        return Button(action: {
+            if isCollapsed { collapsed.remove(group.name) } else { collapsed.insert(group.name) }
+        }) {
+            HStack(spacing: 4) {
+                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down").font(.system(size: 9, weight: .semibold))
+                Text(group.name).font(.system(size: 11, weight: .semibold))
+                Text("\(group.specs.count)").foregroundStyle(.tertiary)
+                Spacer()
+            }
+            .foregroundStyle(.secondary)
+            .contentShape(Rectangle())
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func row(_ spec: HuskSpecs.Spec) -> some View {
+        Button(action: { NSWorkspace.shared.open(spec.url) }) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(spec.title).lineLimit(2)
+                Text(spec.modified, format: .relative(presentation: .named))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+            .padding(.horizontal, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(spec.url.path)
+    }
+
+    private func empty(_ text: String, button: String?) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(text).foregroundStyle(.secondary)
+            if let button {
+                Button(button) { HuskSpecs.openConfig() }
+            }
+            Spacer()
+        }
+        .padding(12)
+    }
+
+    private func reload() {
+        let dir = controller?.focusedSurface?.pwd
+        DispatchQueue.global(qos: .utility).async {
+            let found = HuskSpecs.location(for: dir)
+            let scanned = found.map { HuskSpecs.scan($0.specs) } ?? []
+            DispatchQueue.main.async {
+                if location?.project != found?.project || location?.specs != found?.specs { location = found }
+                if groups != scanned { groups = scanned }
+            }
+        }
+    }
+}

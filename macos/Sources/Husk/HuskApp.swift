@@ -7,10 +7,11 @@ enum HuskApp {
     /// Returns true when this launch is the headless self-test, which needs AppDelegate to
     /// treat the app as already active.
     static func didFinishLaunching(_ app: AppDelegate) -> Bool {
-        // Theme menu, profiles/workspaces in File, View → Show Sidebar, Settings
+        // Theme menu, profiles/workspaces in File, View → Show Sidebar and Show Specs, Settings
         HuskThemes.installMenu()
         HuskProfiles.installMenu()
         HuskModel.shared.installMenu()
+        HuskSpecs.installMenu()
         HuskSettings.installMenu()
         renameMenus()
         installLabelWindowItem()

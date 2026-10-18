@@ -21,6 +21,14 @@ enum HuskSelfTest {
         guard let outDir else { return }
         // Recent directories go to the out dir, not the real list.
         HuskRecentDirs.storeURL = outDir.appendingPathComponent("recent-dirs.json")
+        // Specs: /tmp maps to a specs folder in the out dir, with a top-level spec and one in done/.
+        let specsDir = outDir.appendingPathComponent("specs")
+        try? FileManager.default.createDirectory(at: specsDir.appendingPathComponent("done"), withIntermediateDirectories: true)
+        try? "# Top spec\n\nBody".write(to: specsDir.appendingPathComponent("top.md"), atomically: true, encoding: .utf8)
+        try? "no heading".write(to: specsDir.appendingPathComponent("done/finished.md"), atomically: true, encoding: .utf8)
+        HuskSpecs.configURL = outDir.appendingPathComponent("specs-config")
+        try? "# test\n/tmp = \(specsDir.path)\n/private/tmp = \(specsDir.path)\n"
+            .write(to: HuskSpecs.configURL, atomically: true, encoding: .utf8)
         windowsAtStart = NSApp.windows.filter { $0.windowController is TerminalController }.count
         closeAllTerminalWindows()
         let first = TerminalController.newWindow(ghostty)
@@ -49,8 +57,22 @@ enum HuskSelfTest {
                     _ = ghostty_surface_binding_action(surface, action, UInt(action.lengthOfBytes(using: .utf8)))
                 }
                 after(4) {
+                    // ⌃⌘P in the /tmp tab opens the Specs panel.
+                    if let tmpTab = HuskModel.tabs(of: first.window).last, let window = tmpTab.window,
+                       let p = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .control],
+                                                timestamp: ProcessInfo.processInfo.systemUptime,
+                                                windowNumber: window.windowNumber, context: nil,
+                                                characters: "\u{10}", charactersIgnoringModifiers: "p",
+                                                isARepeat: false, keyCode: 35) {
+                        window.makeKeyAndOrderFront(nil)
+                        NSApp.postEvent(p, atStart: false)
+                    }
                     HuskModel.shared.poll()
                     after(2) {
+                        let tmpTab = HuskModel.tabs(of: first.window).last
+                        extra["specsOpen"] = HuskModel.tabs(of: first.window).map { $0.husk.specs.isOpen }
+                        extra["specs"] = HuskSpecs.location(for: tmpTab?.focusedSurface?.pwd)
+                            .map { HuskSpecs.scan($0.specs).map { "\($0.name.isEmpty ? "/" : $0.name): \($0.specs.map(\.title))" } } ?? []
                         // Reorder: move the last tab to the front
                         let model = HuskModel.shared
                         let before = HuskModel.tabs(of: first.window)

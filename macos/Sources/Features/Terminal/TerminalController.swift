@@ -395,7 +395,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         // Create a new window and add it to the parent
         let controller = TerminalController.init(ghostty, withBaseConfig: baseConfig)
         guard let window = controller.window else { return controller }
-        controller.windowLabel = parentController.windowLabel // Husk: a new tab joins its window's project
+        controller.huskJoinWindow(of: parentController) // Husk: a new tab joins its window's project
 
         // If the parent is miniaturized, then macOS exhibits really strange behaviors
         // so we have to bring it back out.
