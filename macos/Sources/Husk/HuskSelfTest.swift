@@ -57,15 +57,18 @@ enum HuskSelfTest {
                     _ = ghostty_surface_binding_action(surface, action, UInt(action.lengthOfBytes(using: .utf8)))
                 }
                 after(4) {
-                    // ⌃⌘P in the /tmp tab opens the Specs panel.
-                    if let tmpTab = HuskModel.tabs(of: first.window).last, let window = tmpTab.window,
-                       let p = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .control],
-                                                timestamp: ProcessInfo.processInfo.systemUptime,
-                                                windowNumber: window.windowNumber, context: nil,
-                                                characters: "\u{10}", charactersIgnoringModifiers: "p",
-                                                isARepeat: false, keyCode: 35) {
+                    // ⌘S then ⌘P in the /tmp tab opens its Specs panel.
+                    if let tmpTab = HuskModel.tabs(of: first.window).last, let window = tmpTab.window {
                         window.makeKeyAndOrderFront(nil)
-                        NSApp.postEvent(p, atStart: false)
+                        for (chars, code) in [("s", UInt16(1)), ("p", UInt16(35))] {
+                            if let key = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+                                                          timestamp: ProcessInfo.processInfo.systemUptime,
+                                                          windowNumber: window.windowNumber, context: nil,
+                                                          characters: chars, charactersIgnoringModifiers: chars,
+                                                          isARepeat: false, keyCode: code) {
+                                NSApp.postEvent(key, atStart: false)
+                            }
+                        }
                     }
                     HuskModel.shared.poll()
                     after(2) {

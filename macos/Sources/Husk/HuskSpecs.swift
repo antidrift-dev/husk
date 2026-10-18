@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// The spec files for the focused tab's project, listed in a panel that slides in from the right
-/// (View → Show Specs, ⌃⌘P). husk only reads them: the list is whatever files are there.
+/// (View → Show Specs, or ⌘S then ⌘P). husk only reads them: the list is whatever files are there.
 ///
 /// Where each project's specs live is set in ~/.husk/config/specs, one line per project:
 ///
@@ -98,7 +98,7 @@ enum HuskSpecs {
         if !fm.fileExists(atPath: configURL.path) {
             try? fm.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             let example = """
-                # Where each project's specs live, for the Specs panel (View → Show Specs, ⌃⌘P).
+                # Where each project's specs live, for the Specs panel (View → Show Specs, or ⌘S then ⌘P).
                 # project folder = specs folder (or a single file)
                 # ~/Projects/myapp = ~/Projects/myapp/specs
 
@@ -109,17 +109,60 @@ enum HuskSpecs {
                                 configuration: NSWorkspace.OpenConfiguration())
     }
 
-    // MARK: Menu
+    // MARK: Menu and shortcut
 
+    /// View → Show Specs, and the ⌘S ⌘P chord. A menu item can't show a two-key shortcut, so the
+    /// chord is in the title.
     @MainActor
     static func installMenu() {
         guard let view = NSApp.mainMenu?.item(withTitle: "View")?.submenu,
               view.item(withTitle: "Show Specs") == nil else { return }
-        let item = NSMenuItem(title: "Show Specs", action: #selector(MenuToggle.toggle(_:)), keyEquivalent: "p")
-        item.keyEquivalentModifierMask = [.command, .control]
+        let item = NSMenuItem(title: "Show Specs", action: #selector(MenuToggle.toggle(_:)), keyEquivalent: "")
         item.target = MenuToggle.shared
+        item.toolTip = "⌘S then ⌘P (or P)"
         let after = view.items.firstIndex { $0.title == "Show Sidebar" }.map { $0 + 1 } ?? 0
         view.insertItem(item, at: after)
+        installChord()
+    }
+
+    /// How long after ⌘S the second key counts.
+    static let chordWindow: TimeInterval = 1.5
+    @MainActor private static var chordStarted: Date?
+    @MainActor private static var monitor: Any?
+
+    /// ⌘S then ⌘P (or P) toggles the focused tab's panel. ⌘S on its own does nothing (nothing else
+    /// uses it); Escape cancels; any other key after ⌘S goes through as usual.
+    @MainActor
+    private static func installChord() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            MainActor.assumeIsolated { handleChord(event) }
+        }
+    }
+
+    @MainActor
+    private static func handleChord(_ event: NSEvent) -> NSEvent? {
+        guard let controller = NSApp.keyWindow?.windowController as? TerminalController else {
+            chordStarted = nil
+            return event
+        }
+        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function])
+        let key = event.charactersIgnoringModifiers?.lowercased()
+        if let started = chordStarted {
+            chordStarted = nil
+            if Date().timeIntervalSince(started) <= chordWindow {
+                if key == "p" && (mods == .command || mods.isEmpty) {
+                    controller.husk.specs.isOpen.toggle()
+                    return nil
+                }
+                if event.keyCode == 53 { return nil }  // Escape
+            }
+        }
+        if key == "s" && mods == .command && !event.isARepeat {
+            chordStarted = Date()
+            return nil
+        }
+        return event
     }
 
     private final class MenuToggle: NSObject, NSMenuItemValidation {
@@ -223,7 +266,7 @@ struct HuskSpecsPanel: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .help("Hide Specs (⌃⌘P)")
+            .help("Hide Specs (⌘S ⌘P)")
         }
         .padding(.horizontal, 12)
         .frame(height: 32)
