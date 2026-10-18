@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// The spec files for the focused tab's project, listed in a drawer that slides up from the bottom
-/// (View → Show Specs, or ⌘S then ⌘P). husk only reads them: the list is whatever files are there.
+/// (View → Show Specs, or ⌘⇧S then P). husk only reads them: the list is whatever files are there.
 ///
 /// Where each project's specs live is kept in ~/.husk/config/specs, one line per folder, added with
 /// the drawer's folder+ button (nobody edits the file by hand):
@@ -116,7 +116,7 @@ enum HuskSpecs {
         guard !fm.fileExists(atPath: configURL.path) else { return }
         try? fm.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let example = """
-            # Where each project's specs live, for the Specs drawer (View → Show Specs, or ⌘S then ⌘P).
+            # Where each project's specs live, for the Specs drawer (View → Show Specs, or ⌘⇧S then P).
             # husk adds a line here each time you add a folder with the drawer's folder+ button.
             # project folder = specs folder (or a single file)
 
@@ -192,27 +192,28 @@ enum HuskSpecs {
 
     // MARK: Menu and shortcut
 
-    /// View → Show Specs, and the ⌘S ⌘P chord. A menu item can't show a two-key shortcut, so the
-    /// chord is in the title.
+    /// View → Show Specs, and the ⌘⇧S P chord. A menu item can't show a two-key shortcut, so the
+    /// chord is in its tooltip.
     @MainActor
     static func installMenu() {
         guard let view = NSApp.mainMenu?.item(withTitle: "View")?.submenu,
               view.item(withTitle: "Show Specs") == nil else { return }
         let item = NSMenuItem(title: "Show Specs", action: #selector(MenuToggle.toggle(_:)), keyEquivalent: "")
         item.target = MenuToggle.shared
-        item.toolTip = "⌘S then ⌘P (or P)"
+        item.toolTip = "⌘⇧S then P"
         let after = view.items.firstIndex { $0.title == "Show Sidebar" }.map { $0 + 1 } ?? 0
         view.insertItem(item, at: after)
         installChord()
     }
 
-    /// How long after ⌘S the second key counts.
+    /// How long after ⌘⇧S the second key counts.
     static let chordWindow: TimeInterval = 1.5
     @MainActor private static var chordStarted: Date?
     @MainActor private static var monitor: Any?
 
-    /// ⌘S then ⌘P (or P) toggles the focused tab's panel. ⌘S on its own does nothing (nothing else
-    /// uses it); Escape cancels; any other key after ⌘S goes through as usual. Escape also closes
+    /// ⌘⇧S then P toggles the focused tab's panel, with ⌘ and ⇧ still held or not. ⌘⇧S on its own
+    /// does nothing (nothing else uses it); Escape cancels; any other key after it goes through as
+    /// usual. Escape also closes
     /// an open drawer.
     @MainActor
     private static func installChord() {
@@ -234,14 +235,14 @@ enum HuskSpecs {
         if let started = chordStarted {
             chordStarted = nil
             if Date().timeIntervalSince(started) <= chordWindow {
-                if key == "p" && (mods == .command || mods.isEmpty) {
+                if key == "p" && mods.subtracting([.command, .shift]).isEmpty {
                     controller.husk.specs.isOpen.toggle()
                     return nil
                 }
                 if event.keyCode == 53 { return nil }  // Escape
             }
         }
-        if key == "s" && mods == .command && !event.isARepeat {
+        if key == "s" && mods == [.command, .shift] && !event.isARepeat {
             chordStarted = Date()
             return nil
         }
@@ -362,7 +363,7 @@ struct HuskSpecsPanel: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .help("Hide Specs (Escape, or ⌘S ⌘P)")
+            .help("Hide Specs (Escape, or ⌘⇧S P)")
         }
         .padding(.horizontal, 12)
         .frame(height: 28)

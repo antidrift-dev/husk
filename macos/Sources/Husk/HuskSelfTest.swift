@@ -57,14 +57,14 @@ enum HuskSelfTest {
                     _ = ghostty_surface_binding_action(surface, action, UInt(action.lengthOfBytes(using: .utf8)))
                 }
                 after(4) {
-                    // ⌘S then ⌘P in the /tmp tab opens its Specs drawer, the keys a moment apart
+                    // ⌘⇧S then ⌘⇧P in the /tmp tab opens its Specs drawer, the keys a moment apart
                     // like a person's (posted together, the second is sometimes dropped).
                     let specsTab = HuskModel.tabs(of: first.window).last
                     if let window = specsTab?.window {
                         window.makeKeyAndOrderFront(nil)
-                        for (delay, chars, code) in [(0.0, "s", UInt16(1)), (0.3, "p", UInt16(35))] {
+                        for (delay, chars, code) in [(0.0, "S", UInt16(1)), (0.3, "P", UInt16(35))] {
                             after(delay) {
-                                if let key = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+                                if let key = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .shift],
                                                               timestamp: ProcessInfo.processInfo.systemUptime,
                                                               windowNumber: window.windowNumber, context: nil,
                                                               characters: chars, charactersIgnoringModifiers: chars,
@@ -124,7 +124,7 @@ enum HuskSelfTest {
                                     NSApp.postEvent(q, atStart: false)
                                 }
                             }
-                            // Escape closes the drawer that ⌘S ⌘P opened.
+                            // Escape closes the drawer that ⌘⇧S ⌘⇧P opened.
                             if let window = specsTab?.window,
                                let esc = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
                                                           timestamp: ProcessInfo.processInfo.systemUptime,
