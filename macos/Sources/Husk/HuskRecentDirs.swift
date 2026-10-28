@@ -67,6 +67,35 @@ enum HuskRecentDirs {
         show(in: controller, excluding: current.map { ($0 as NSString).standardizingPath })
     }
 
+    /// Hook at app start: the window the app opens (a restored one, or a fresh one) gets the dialog
+    /// too, since a restored window assumes the same directory and you may want another. Once per
+    /// launch, on the first terminal window to become key; later restored windows are left alone.
+    @MainActor
+    static func offerAtLaunch() {
+        guard HuskSettings.shared.showRecentDirs else { return }
+        var token: NSObjectProtocol?
+        var done = false
+        let finish: (TerminalController) -> Void = { controller in
+            guard !done else { return }
+            done = true
+            if let token { NotificationCenter.default.removeObserver(token) }
+            let pwd = controller.focusedSurface?.pwd.flatMap { $0.isEmpty ? nil : ($0 as NSString).standardizingPath }
+            show(in: controller, excluding: pwd)
+        }
+        token = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
+        ) { note in
+            guard let controller = (note.object as? NSWindow)?.windowController as? TerminalController else { return }
+            // The surface's pwd arrives a moment after the window; show() waits 0.2 s more.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { MainActor.assumeIsolated { finish(controller) } }
+        }
+        // If no terminal window ever becomes key (nothing restored, nothing opened), stop listening.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+            done = true
+            if let token { NotificationCenter.default.removeObserver(token) }
+        }
+    }
+
     private static func show(in controller: TerminalController, excluding current: String?) {
         let dirs = choices(excluding: current)
         guard !dirs.isEmpty else { return }

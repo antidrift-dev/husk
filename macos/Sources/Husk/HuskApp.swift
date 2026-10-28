@@ -17,7 +17,10 @@ enum HuskApp {
         installLabelWindowItem()
 
         // Headless smoke test (see HuskSelfTest)
-        guard HuskSelfTest.outDir != nil else { return false }
+        guard HuskSelfTest.outDir != nil else {
+            HuskRecentDirs.offerAtLaunch()
+            return false
+        }
         DispatchQueue.main.async { HuskSelfTest.run(ghostty: app.ghostty) }
         return true
     }
