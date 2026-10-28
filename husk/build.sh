@@ -7,7 +7,7 @@
 #   husk/build.sh core       also rebuild the Zig core (after changing anything outside macos/)
 #
 # One-time setup this relies on:
-#   - Zig 0.15.2 in .toolchain/ (Ghostty v1.3.1 needs exactly this version)
+#   - Zig 0.17.0 in .toolchain/ (Ghostty v1.4.0 needs this version)
 #   - Xcode's Metal toolchain:  xcodebuild -downloadComponent MetalToolchain
 #   - The Developer ID certificate below in the login keychain
 #   - For notarize:  xcrun notarytool store-credentials husk
@@ -19,7 +19,7 @@ cd "$ROOT"
 SIGN_ID="Developer ID Application: Reloop Labs, LLC (MV45NBJTQP)"
 
 if [[ "$1" == "core" || ! -d macos/GhosttyKit.xcframework ]]; then
-  PATH="$ROOT/.toolchain/zig-aarch64-macos-0.15.2:$PATH" \
+  PATH="$ROOT/.toolchain/zig-aarch64-macos-0.17.0:$PATH" \
     zig build -Demit-macos-app=false -Doptimize=ReleaseFast -Dxcframework-target=native
 fi
 
