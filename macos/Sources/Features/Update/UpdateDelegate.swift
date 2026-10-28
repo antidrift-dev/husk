@@ -3,18 +3,8 @@ import Cocoa
 
 extension UpdateDriver: SPUUpdaterDelegate {
     func feedURLString(for updater: SPUUpdater) -> String? {
-        return nil // Husk: no husk update feed yet; never point at Ghostty's appcast
-        guard let appDelegate = NSApplication.shared.delegate as? AppDelegate else {
-            return nil
-        }
-
-        // Sparkle supports a native concept of "channels" but it requires that
-        // you share a single appcast file. We don't want to do that so we
-        // do this instead.
-        switch appDelegate.ghostty.config.autoUpdateChannel {
-        case .tip: return "https://tip.files.ghostty.org/appcast.xml"
-        case .stable: return "https://release.files.ghostty.org/appcast.xml"
-        }
+        // Husk: the appcast is an asset of each GitHub release (husk/release.sh), never Ghostty's.
+        return "https://github.com/antidrift-dev/husk/releases/latest/download/appcast.xml"
     }
 
     /// Called when an update is scheduled to install silently,

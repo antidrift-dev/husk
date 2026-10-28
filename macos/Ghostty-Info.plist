@@ -105,9 +105,11 @@
 		</dict>
 	</array>
 	<key>SUEnableAutomaticChecks</key>
-	<false/>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>43200</integer>
 	<key>SUPublicEDKey</key>
-	<string>wsNcGf5hirwtdXMVnYoxRIX/SqZQLMOsYlD3q3imeok=</string>
+	<string>Qp6WaZQvij62+GpCXka+09X4854EnKIFJSWTo9LN6Uk=</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>

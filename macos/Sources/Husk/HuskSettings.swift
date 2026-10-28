@@ -91,7 +91,7 @@ final class HuskSettings: ObservableObject {
 
     @MainActor private static var window: NSWindow?
 
-    static let defaultSize = NSSize(width: 640, height: 440)
+    static let defaultSize = NSSize(width: 900, height: 700)
 
     @MainActor
     static func show() {
@@ -134,10 +134,6 @@ final class HuskSettings: ObservableObject {
         prefs.title = "Settings…"
         prefs.target = MenuTarget.shared
         prefs.action = #selector(MenuTarget.showSettings(_:))
-        // No husk update feed yet (Sparkle is disabled), so drop "Check for Updates…"
-        for item in appMenu.items where item.title.hasPrefix("Check for Updates") {
-            appMenu.removeItem(item)
-        }
         let index = appMenu.index(of: prefs)
         if appMenu.item(withTitle: "Open Config File…") == nil {
             let raw = NSMenuItem(title: "Open Config File…", action: #selector(AppDelegate.openConfig(_:)), keyEquivalent: "")

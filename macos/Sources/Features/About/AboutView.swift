@@ -4,6 +4,7 @@ struct AboutView: View {
     @Environment(\.openURL) var openURL
 
     private let githubURL = URL(string: "https://github.com/ghostty-org/ghostty")
+    private let huskURL = URL(string: "https://github.com/antidrift-dev/husk")
     private let docsURL = URL(string: "https://ghostty.org/docs")
 
     /// Read the commit from the bundle.
@@ -81,7 +82,7 @@ struct AboutView: View {
                     Text(HuskVersion.appName)
                         .bold()
                         .font(.title)
-                    Text("Fast, native, feature-rich terminal \nemulator pushing modern features.")
+                    Text("A fork of Ghostty, the fast, native, feature-rich terminal emulator.")
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                         .font(.caption)
@@ -118,11 +119,24 @@ struct AboutView: View {
                         }
                     }
                     if let url = githubURL {
-                        Button("GitHub") {
+                        Button("Ghostty") {
+                            openURL(url)
+                        }
+                    }
+                    if let url = huskURL {
+                        Button("husk") {
                             openURL(url)
                         }
                     }
                 }
+
+                Text("Based on Ghostty. Released under the MIT License.\nCopyright (c) 2024 Mitchell Hashimoto, Ghostty contributors")
+                    .font(.caption)
+                    .textSelection(.enabled)
+                    .tint(.secondary)
+                    .opacity(0.8)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
 
                 if let copy = self.copyright {
                     Text(copy)

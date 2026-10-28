@@ -16,6 +16,10 @@ struct HuskStatusBar: View {
     var body: some View {
         let status = controller.map { model.status(for: $0) } ?? HuskTabStatus()
         HStack(spacing: 14) {
+            if let updates = (NSApp.delegate as? AppDelegate)?.updateViewModel {
+                HuskUpdateButton(model: updates)
+            }
+
             Text(status.cwd ?? " ")
                 .lineLimit(1)
                 .truncationMode(.head)
@@ -52,7 +56,7 @@ struct HuskStatusBar: View {
         .font(.system(size: 12, design: .monospaced))
         .foregroundStyle(.secondary)
         .padding(.horizontal, 12)
-        .frame(height: 28)
+        .frame(height: 34)
     }
 
     @ViewBuilder
@@ -220,5 +224,78 @@ private struct HuskContextPopover: View {
             Spacer()
             Text(value)
         }
+    }
+}
+
+/// A small circle in the update pill's colors: Ghostty's UpdateBadge for the current state, with the
+/// same popover and the same "No Updates" auto-dismiss as UpdatePill. Hidden while there is nothing to say.
+private struct HuskUpdateButton: View {
+    @ObservedObject var model: UpdateViewModel
+    @State private var showPopover = false
+    @State private var resetTask: Task<Void, Never>?
+
+    /// The download icon when an update is waiting; the spinner, progress or error badge for the other states.
+    @ViewBuilder
+    private var badge: some View {
+        if case .updateAvailable = model.state {
+            HuskDownloadIcon().stroke(style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round))
+        } else {
+            UpdateBadge(model: model)
+        }
+    }
+
+    var body: some View {
+        if !model.state.isHidden {
+            Button(action: {
+                if case .notFound(let notFound) = model.state {
+                    model.state = .idle
+                    notFound.acknowledgement()
+                } else {
+                    showPopover.toggle()
+                }
+            }, label: {
+                badge
+                    .frame(width: 16, height: 16)
+                    .padding(4)
+                    .background(Circle().fill(model.backgroundColor))
+                    .foregroundColor(model.foregroundColor)
+                    .contentShape(Circle())
+            })
+            .buttonStyle(.plain)
+            .help(model.text)
+            .accessibilityLabel(model.text)
+            .popover(isPresented: $showPopover, arrowEdge: .top) {
+                UpdatePopoverView(model: model)
+            }
+            .onChange(of: model.state) { newState in
+                resetTask?.cancel()
+                if case .notFound(let notFound) = newState {
+                    resetTask = Task {
+                        try? await Task.sleep(for: .seconds(5))
+                        guard !Task.isCancelled, case .notFound = model.state else { return }
+                        model.state = .idle
+                        notFound.acknowledgement()
+                    }
+                } else {
+                    resetTask = nil
+                }
+            }
+        }
+    }
+}
+
+/// Tabler "arrow-bar-to-down" (24 x 24 viewBox, stroke width 1, round caps and joins).
+private struct HuskDownloadIcon: Shape {
+    func path(in rect: CGRect) -> Path {
+        let k = min(rect.width, rect.height) / 24
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: rect.minX + x * k, y: rect.minY + y * k)
+        }
+        var path = Path()
+        path.move(to: point(4, 20)); path.addLine(to: point(20, 20))
+        path.move(to: point(12, 14)); path.addLine(to: point(12, 4))
+        path.move(to: point(12, 14)); path.addLine(to: point(16, 10))
+        path.move(to: point(12, 14)); path.addLine(to: point(8, 10))
+        return path
     }
 }

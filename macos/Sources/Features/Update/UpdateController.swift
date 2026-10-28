@@ -40,9 +40,14 @@ class UpdateController {
     /// This must be called before the updater can check for updates. If starting fails,
     /// the error will be shown to the user.
     func startUpdater() {
-        return // Husk: no husk update feed yet, and Sparkle would "update" husk to stock Ghostty
         do {
             try updater.start()
+            // Husk: check at every launch, then Sparkle repeats every SUScheduledCheckInterval (12 h).
+            // Runs after AppDelegate has synced the auto-update setting onto the updater.
+            DispatchQueue.main.async { [weak self] in
+                guard let updater = self?.updater, updater.automaticallyChecksForUpdates else { return }
+                updater.checkForUpdatesInBackground()
+            }
         } catch {
             userDriver.viewModel.state = .error(.init(
                 error: error,

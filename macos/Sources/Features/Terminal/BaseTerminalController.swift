@@ -1177,6 +1177,7 @@ class BaseTerminalController: NSWindowController,
     }
 
     func defaultUpdateOverlayVisibility() -> Bool {
+        return false // Husk: updates show as the status bar's download button (HuskUpdateButton)
         guard let window else { return true }
 
         // No titlebar we always show the update overlay because it can't support

@@ -4,8 +4,9 @@
 #
 #   husk/release.sh
 #
-# Then commit husk/build-number and publish both files as a GitHub release:
-#   gh release create v<version> --title "husk v<version>" --notes "…" macos/build.noindex/release/husk-*
+# Then commit husk/build-number and publish the files as a GitHub release (appcast.xml is what the
+# in-app updater reads, from releases/latest/download/appcast.xml, so it goes on every release):
+#   gh release create v<version> --title "husk v<version>" --notes "…" macos/build.noindex/release/husk-* macos/build.noindex/release/appcast.xml
 #
 # (the build number is bumped by build.sh, so it's left uncommitted until the release ships).
 set -e
@@ -39,6 +40,20 @@ codesign --timestamp --sign "$SIGN_ID" "$OUT/$NAME.dmg"
 xcrun notarytool submit "$OUT/$NAME.dmg" --keychain-profile husk --wait
 xcrun stapler staple "$OUT/$NAME.dmg"
 spctl -a -t open --context context:primary-signature -vv "$OUT/$NAME.dmg"
+
+# appcast: Sparkle reads this to offer the update. generate_appcast signs the zip with the EdDSA
+# private key in the login keychain (made once with Sparkle's generate_keys; its public half is
+# SUPublicEDKey in macos/Ghostty-Info.plist). It only sees the zip, in its own folder, so the
+# appcast lists just this release, with the zip's URL on this release's GitHub download path.
+SPARKLE_BIN=$(echo ~/Library/Developer/Xcode/DerivedData/Ghostty-*/SourcePackages/artifacts/sparkle/Sparkle/bin(N[1]))
+[[ -x "$SPARKLE_BIN/generate_appcast" ]] || { echo "No Sparkle tools found — build once with husk/build.sh"; exit 1; }
+APPCAST_DIR="$OUT/appcast-src"
+mkdir "$APPCAST_DIR"
+cp "$OUT/$NAME.zip" "$APPCAST_DIR/"
+"$SPARKLE_BIN/generate_appcast" \
+  --download-url-prefix "https://github.com/antidrift-dev/husk/releases/download/v$VERSION/" \
+  -o "$OUT/appcast.xml" "$APPCAST_DIR"
+rm -rf "$APPCAST_DIR"
 
 echo "\nv$VERSION ready:"
 ls -lh "$OUT"

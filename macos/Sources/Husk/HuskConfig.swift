@@ -19,7 +19,7 @@ enum HuskConfig {
     window-inherit-working-directory = true
     macos-titlebar-style = transparent
     macos-titlebar-proxy-icon = hidden
-    auto-update = off
+    auto-update = check
 
     # Husk: notify when a long command finishes (on/off is in Settings)
     notify-on-command-finish-after = 10s

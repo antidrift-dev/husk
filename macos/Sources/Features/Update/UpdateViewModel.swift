@@ -331,8 +331,8 @@ enum UpdateState: Equatable {
 
             // Check for semantic version (x.y.z)
             if let semver = Self.extractSemanticVersion(from: version) {
-                let slug = semver.replacingOccurrences(of: ".", with: "-")
-                if let url = URL(string: "https://ghostty.org/docs/install/release-notes/\(slug)") {
+                // Husk: the notes live on husk's own GitHub release (tag v<version>), not Ghostty's site.
+                if let url = URL(string: "https://github.com/antidrift-dev/husk/releases/tag/v\(semver)") {
                     self = .tagged(url)
                     return
                 }
