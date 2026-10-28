@@ -61,6 +61,37 @@ husk/release.sh          # notarized build packaged as a .dmg and .zip for a Git
 husk/selftest.sh         # headless smoke test
 ```
 
+### Xcode 27
+
+Zig 0.15.2 can't build against Xcode 27 on its own: the macOS 27 SDK's `libSystem.tbd` lists `arm64e` but not
+`arm64`, so Zig can't link, and Xcode 27's `libtool` drops the object files in Zig's archives ("not 8-byte
+aligned"). The Command Line Tools still ship the macOS 26.2 SDK and a `libtool` that work, so put two wrappers
+in `.toolchain/sdk-shim/` and build with them first on the PATH:
+
+```sh
+# .toolchain/sdk-shim/xcrun
+#!/bin/zsh
+if [[ "$*" == "--sdk macosx --show-sdk-path" ]]; then
+  echo /Library/Developer/CommandLineTools/SDKs/MacOSX26.2.sdk
+  exit 0
+fi
+exec /usr/bin/xcrun "$@"
+```
+
+```sh
+# .toolchain/sdk-shim/libtool
+#!/bin/zsh
+exec /Library/Developer/CommandLineTools/usr/bin/libtool "$@"
+```
+
+```sh
+chmod +x .toolchain/sdk-shim/*
+PATH="$PWD/.toolchain/sdk-shim:$PATH" husk/build.sh debug
+```
+
+If a build already ran without the wrappers, delete `macos/GhosttyKit.xcframework` and `.zig-cache` so the
+core library is combined again.
+
 The version is `0.3.<build>`, where `<build>` is the counter in `husk/build-number`, bumped on every build.
 Signing uses the Developer ID certificate for Reloop Labs, LLC (`MV45NBJTQP`); notarizing uses the
 `notarytool` keychain profile `husk`.
