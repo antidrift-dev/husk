@@ -43,7 +43,7 @@ enum HuskConfig {
     #
     # font-size = 14
     # cursor-style = bar
-    # scrollback-limit = 10000000
+    # scrollback-limit-bytes = 10000000
     #
     # Quake-style drop-down terminal (needs Accessibility permission):
     # keybind = global:ctrl+grave_accent=toggle_quick_terminal

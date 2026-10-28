@@ -14,6 +14,9 @@ final class HuskSettings: ObservableObject {
     @AppStorage("HuskCursorStyle") var cursorStyle = CursorStyle.block.rawValue { willSet { objectWillChange.send() } }
     @AppStorage("HuskCursorBlink") var cursorBlink = true { willSet { objectWillChange.send() } }
     @AppStorage("HuskScrollbackMB") var scrollbackMB = 10 { willSet { objectWillChange.send() } }
+    /// Ghostty 1.4 changed these two on macOS; husk keeps 1.3's behavior unless they're changed here.
+    @AppStorage("HuskCopyOnSelect") var copyOnSelect = true { willSet { objectWillChange.send() } }
+    @AppStorage("HuskCmdArrowsScroll") var cmdArrowsScroll = true { willSet { objectWillChange.send() } }
     @AppStorage("HuskQuakeMode") var quakeMode = false { willSet { objectWillChange.send() } }
     @AppStorage("HuskQuakeHotkey") var quakeHotkey = "ctrl+grave_accent" { willSet { objectWillChange.send() } }
     @AppStorage("HuskNotifyOnFinish") var notifyOnFinish = true { willSet { objectWillChange.send() } }
@@ -21,6 +24,26 @@ final class HuskSettings: ObservableObject {
     @AppStorage("HuskShowRecentDirs") var showRecentDirs = true { willSet { objectWillChange.send() } }
     /// The app specs open in from the Specs drawer; empty until the first one is opened, which asks.
     @AppStorage("HuskSpecsOpenWith") var specsOpenWith = "" { willSet { objectWillChange.send() } }
+    /// Not part of the config layer: ⌘⇧S then P toggles the Specs drawer (HuskSpecs). Off by default.
+    @AppStorage("HuskSpecsShortcut") var specsShortcut = false { willSet { objectWillChange.send() } }
+    /// Every other Ghostty option set in Settings (the rows built from HuskConfigSchema): name → values,
+    /// one config line each. An option at its default isn't stored.
+    @Published var overrides: [String: [String]] =
+        UserDefaults.standard.dictionary(forKey: "HuskConfigOverrides") as? [String: [String]] ?? [:] {
+        didSet { UserDefaults.standard.set(overrides, forKey: "HuskConfigOverrides") }
+    }
+
+    /// The value an option has in Settings: its override, else the default husk runs with.
+    func values(_ option: HuskConfigOption) -> [String] {
+        overrides[option.name] ?? option.effectiveDefault
+    }
+
+    /// Sets an option; back at its default, the override is dropped. List options store only the
+    /// lines added to the defaults.
+    func set(_ option: HuskConfigOption, _ values: [String]) {
+        let isDefault = option.kind == .list ? values.isEmpty : values == option.effectiveDefault
+        overrides[option.name] = isDefault ? nil : values
+    }
 
     /// The config layer these settings produce.
     var configText: String {
@@ -32,10 +55,17 @@ final class HuskSettings: ObservableObject {
         }
         lines.append("cursor-style = \(cursorStyle)")
         lines.append("cursor-style-blink = \(cursorBlink)")
-        lines.append("scrollback-limit = \(scrollbackMB * 1_000_000)")
+        lines.append("scrollback-limit-bytes = \(scrollbackMB * 1_000_000)")
+        // Selecting copies for middle-click paste (primary), as in Ghostty 1.3
+        lines.append("copy-on-select = \(copyOnSelect ? "primary" : "none")")
+        let (up, down) = cmdArrowsScroll ? ("scroll_to_top", "scroll_to_bottom") : ("jump_to_prompt:-1", "jump_to_prompt:1")
+        lines.append(contentsOf: ["keybind = super+arrow_up=\(up)", "keybind = super+arrow_down=\(down)"])
         lines.append("notify-on-command-finish = \(notifyOnFinish ? "unfocused" : "never")")
         if quakeMode, !quakeHotkey.isEmpty {
             lines.append("keybind = global:\(quakeHotkey)=toggle_quick_terminal")
+        }
+        for name in overrides.keys.sorted() {
+            lines.append(contentsOf: (overrides[name] ?? []).map { "\(name) = \($0)" })
         }
         return lines.joined(separator: "\n") + "\n"
     }
@@ -133,11 +163,18 @@ struct HuskSettingsView: View {
                     ForEach(HuskThemes.themes, id: \.id) { Text($0.name).tag($0.id) }
                 }
                 .onChange(of: themeID) { HuskThemes.select($0) }
+                LabeledContent("Font") { HuskFontFamilyPicker() }
                 Stepper("Font size: \(Int(settings.fontSize))", value: $settings.fontSize, in: 9...32, step: 1)
                 Toggle("Font ligatures", isOn: $settings.ligatures)
                 Text("Ligatures can slow rendering of very busy output.").font(.caption).foregroundStyle(.secondary)
+                HuskOptionRow("background-opacity", label: "Background opacity")
+                HuskOptionRow("background-blur", label: "Background blur")
+                HuskOptionRow("unfocused-split-opacity", label: "Unfocused split opacity")
+                HuskOptionRow("window-padding-x", label: "Horizontal padding")
+                HuskOptionRow("window-padding-y", label: "Vertical padding")
                 Toggle("Session sidebar instead of top tabs", isOn: $model.showSidebar)
             }
+            .formStyle(.grouped)
             .tabItem { Text("Appearance") }
 
             Form {
@@ -148,8 +185,32 @@ struct HuskSettingsView: View {
                 Picker("Scrollback", selection: $settings.scrollbackMB) {
                     ForEach([10, 25, 50, 100], id: \.self) { Text("\($0) MB").tag($0) }
                 }
+                Toggle("Copy on select (middle-click pastes it)", isOn: $settings.copyOnSelect)
+                Picker("⌘↑ / ⌘↓", selection: $settings.cmdArrowsScroll) {
+                    Text("Scroll to top / bottom").tag(true)
+                    Text("Jump to previous / next prompt").tag(false)
+                }
+                HuskOptionRow("macos-option-as-alt", label: "Option key acts as Alt")
+                HuskOptionRow("mouse-hide-while-typing", label: "Hide mouse while typing")
+                HuskOptionRow("cursor-click-to-move", label: "Click to move the cursor")
+                HuskOptionRow("shell-integration", label: "Shell integration")
+                HuskOptionRow("clipboard-paste-protection", label: "Warn before pasting risky text")
+                HuskOptionRow("clipboard-read", label: "Programs can read the clipboard")
+                HuskOptionRow("clipboard-write", label: "Programs can write the clipboard")
             }
+            .formStyle(.grouped)
             .tabItem { Text("Terminal") }
+
+            Form {
+                HuskOptionRow("window-save-state", label: "Restore windows on launch")
+                HuskOptionRow("window-inherit-working-directory", label: "New windows start in the current folder")
+                HuskOptionRow("window-new-tab-position", label: "New tabs open")
+                HuskOptionRow("confirm-close-surface", label: "Confirm closing a running process")
+                HuskOptionRow("quit-after-last-window-closed", label: "Quit when the last window closes")
+                HuskOptionRow("macos-window-shadow", label: "Window shadow")
+            }
+            .formStyle(.grouped)
+            .tabItem { Text("Windows") }
 
             Form {
                 Toggle("Quake mode (drop-down terminal)", isOn: $settings.quakeMode)
@@ -159,6 +220,7 @@ struct HuskSettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 Toggle("Notify when a long command finishes", isOn: $settings.notifyOnFinish)
                 Toggle("Show recent directories in new tabs", isOn: $settings.showRecentDirs)
+                Toggle("⌘⇧S then P shows Specs", isOn: $settings.specsShortcut)
                 Picker("Open specs with", selection: $settings.specsOpenWith) {
                     Text("Ask").tag("")
                     // The .md editors, plus the saved app if it was picked with Other….
@@ -168,7 +230,11 @@ struct HuskSettingsView: View {
                     }
                 }
             }
+            .formStyle(.grouped)
             .tabItem { Text("Features") }
+
+            HuskAllSettingsView()
+                .tabItem { Text("All Settings") }
         }
         .padding(20)
         .frame(minWidth: HuskSettings.defaultSize.width, maxWidth: .infinity,

@@ -30,12 +30,15 @@ husk has its own bundle ID (`dev.antidrift.husktty`) and config, so it never rea
   "husk v0.3.N (label)" and in the Window menu. New tabs and tabs dragged in take the window's label.
 - **Recent directories:** a new tab or window (⌘T, ⌘N, ⌘⇧N) offers the folders you've recently worked in;
   ⌘1–9 or a click goes there, Escape stays put. Turn it off with "Don't show again" or in Settings.
-- **Specs drawer:** ⌘⇧S then P slides up a list of the project's spec files, a heading per subfolder.
+- **Specs drawer:** View → Show Specs slides up a list of the project's spec files, a heading per subfolder.
+  ⌘⇧S then P does the same once it's turned on in Settings → Features (off by default).
   Add a specs folder with the folder+ button; click a spec to open it in the app you pick the first time
   (change it in Settings → Features). Escape closes it. Each tab has its own.
 - **19 Husk themes** in a Theme menu, applied live.
-- **Settings window** (⌘,): theme, font size, ligatures, sidebar, cursor, scrollback, quake hotkey and
-  notifications when a command finishes.
+- **Settings window** (⌘,): the common settings on Appearance, Terminal, Windows and Features tabs (font,
+  opacity, padding, Option as Alt, clipboard, restoring windows, …), and an **All Settings** tab with every
+  Ghostty option that works on macOS, searchable, each with the right control and Ghostty's own description.
+  No config file needed; changes apply right away.
 - **Profiles and workspaces** in the File menu, using the same JSON as Husk in `~/.husk/`.
 - **Optional sidebar** of tabs (View → Show Sidebar). Native top tabs are the default.
 - **Press ⌘Q three times to quit**, so a stray ⌘Q doesn't close every session.
@@ -59,6 +62,7 @@ husk/build.sh debug      # Debug build
 husk/build.sh core       # also rebuild the Zig core (after changing anything outside macos/)
 husk/release.sh          # notarized build packaged as a .dmg and .zip for a GitHub release
 husk/selftest.sh         # headless smoke test
+husk/gen-settings-schema.sh  # after merging a new Ghostty: regenerate the All Settings list from Config.zig
 ```
 
 The version is `0.3.<build>`, where `<build>` is the counter in `husk/build-number`, bumped on every build.

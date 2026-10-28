@@ -110,6 +110,38 @@ pub fn init(
         ).step);
     }
 
+    // Husk: every config option as JSON, for the Settings window (husk/gen-settings-schema.sh).
+    {
+        const husk_schema = b.addExecutable(.{
+            .name = "husk_schema",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/main.zig"),
+                .target = b.graph.host,
+            }),
+        });
+        deps.help_strings.addImport(husk_schema);
+
+        {
+            const buildconfig = config: {
+                var copy = deps.config.*;
+                copy.exe_entrypoint = .husk_schema;
+                break :config copy;
+            };
+
+            const options = b.addOptions();
+            try buildconfig.addOptions(options);
+            husk_schema.root_module.addOptions("build_options", options);
+        }
+
+        const husk_schema_step = b.addRunArtifact(husk_schema);
+        const husk_schema_out = husk_schema_step.captureStdOut(.{});
+
+        try steps.append(b.allocator, &b.addInstallFile(
+            husk_schema_out,
+            "share/ghostty/webdata/husk-config-schema.json",
+        ).step);
+    }
+
     return .{ .steps = steps.items };
 }
 

@@ -873,6 +873,7 @@ pub const ExeEntrypoint = enum {
     webgen_config,
     webgen_actions,
     webgen_commands,
+    husk_schema,
 };
 
 /// The release channel for the build.

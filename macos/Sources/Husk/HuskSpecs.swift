@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// The spec files for the focused tab's project, listed in a drawer that slides up from the bottom
-/// (View → Show Specs, or ⌘⇧S then P). husk only reads them: the list is whatever files are there.
+/// (View → Show Specs, or ⌘⇧S then P when it is on in Settings). husk only reads them: the list is whatever files are there.
 ///
 /// Where each project's specs live is kept in ~/.husk/config/specs, one line per folder, added with
 /// the drawer's folder+ button (nobody edits the file by hand):
@@ -116,7 +116,7 @@ enum HuskSpecs {
         guard !fm.fileExists(atPath: configURL.path) else { return }
         try? fm.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let example = """
-            # Where each project's specs live, for the Specs drawer (View → Show Specs, or ⌘⇧S then P).
+            # Where each project's specs live, for the Specs drawer (View → Show Specs).
             # husk adds a line here each time you add a folder with the drawer's folder+ button.
             # project folder = specs folder (or a single file)
 
@@ -249,7 +249,7 @@ enum HuskSpecs {
               view.item(withTitle: "Show Specs") == nil else { return }
         let item = NSMenuItem(title: "Show Specs", action: #selector(MenuToggle.toggle(_:)), keyEquivalent: "")
         item.target = MenuToggle.shared
-        item.toolTip = "⌘⇧S then P"
+        item.toolTip = chordEnabled ? "⌘⇧S then P" : nil
         let after = view.items.firstIndex { $0.title == "Show Sidebar" }.map { $0 + 1 } ?? 0
         view.insertItem(item, at: after)
         installChord()
@@ -259,11 +259,13 @@ enum HuskSpecs {
     static let chordWindow: TimeInterval = 1.5
     @MainActor private static var chordStarted: Date?
     @MainActor private static var monitor: Any?
+    /// The self-test turns the chord on without saving the setting.
+    @MainActor static var chordForced = false
+    @MainActor static var chordEnabled: Bool { chordForced || HuskSettings.shared.specsShortcut }
 
-    /// ⌘⇧S then P toggles the focused tab's panel, with ⌘ and ⇧ still held or not. ⌘⇧S on its own
-    /// does nothing (nothing else uses it); Escape cancels; any other key after it goes through as
-    /// usual. Escape also closes
-    /// an open drawer.
+    /// ⌘⇧S then P toggles the focused tab's panel, with ⌘ and ⇧ still held or not, when it's turned
+    /// on in Settings → Features. ⌘⇧S on its own does nothing (nothing else uses it); Escape cancels;
+    /// any other key after it goes through as usual. Escape also closes an open drawer, either way.
     @MainActor
     private static func installChord() {
         guard monitor == nil else { return }
@@ -291,7 +293,7 @@ enum HuskSpecs {
                 if event.keyCode == 53 { return nil }  // Escape
             }
         }
-        if key == "s" && mods == [.command, .shift] && !event.isARepeat {
+        if chordEnabled && key == "s" && mods == [.command, .shift] && !event.isARepeat {
             chordStarted = Date()
             return nil
         }
@@ -315,6 +317,7 @@ enum HuskSpecs {
             MainActor.assumeIsolated {
                 let controller = NSApp.keyWindow?.windowController as? TerminalController
                 item.state = controller?.husk.specs.isOpen == true ? .on : .off
+                item.toolTip = HuskSpecs.chordEnabled ? "⌘⇧S then P" : nil
                 return controller != nil
             }
         }
@@ -413,7 +416,7 @@ struct HuskSpecsPanel: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .help("Hide Specs (Escape, or ⌘⇧S P)")
+            .help(HuskSpecs.chordEnabled ? "Hide Specs (Escape, or ⌘⇧S P)" : "Hide Specs (Escape)")
         }
         .padding(.horizontal, 12)
         .frame(height: 28)

@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import GhosttyKit
 
 /// Headless smoke test of the Husk layer, for runs where nobody can look at the screen.
@@ -21,6 +22,8 @@ enum HuskSelfTest {
         guard let outDir else { return }
         // Recent directories go to the out dir, not the real list.
         HuskRecentDirs.storeURL = outDir.appendingPathComponent("recent-dirs.json")
+        // The ⌘⇧S P chord is off by default; turn it on for this run only.
+        HuskSpecs.chordForced = true
         // Specs: /tmp maps to a specs folder in the out dir, with a top-level spec and one in done/.
         let specsDir = outDir.appendingPathComponent("specs")
         try? FileManager.default.createDirectory(at: specsDir.appendingPathComponent("done"), withIntermediateDirectories: true)
@@ -125,6 +128,7 @@ enum HuskSelfTest {
                                 extra["settingsSize"] = "\(Int(settings.frame.width))x\(Int(settings.frame.height))"
                                 extra["settingsOffsetFromTerminalCenter"] =
                                     "\(Int(settings.frame.midX - terminal.frame.midX)),\(Int(settings.frame.midY - terminal.frame.midY))"
+                                snapshot(settings, to: outDir.appendingPathComponent("settings.png"))
                                 settings.close()
                             }
                             // ⌘Q twice through the event queue, like real key presses: still
@@ -221,6 +225,27 @@ enum HuskSelfTest {
         report["settingsMenuTitle"] = NSApp.mainMenu?.items.first?.submenu?.items.first(where: { $0.keyEquivalent == "," })?.title ?? ""
         report["appMenuItems"] = NSApp.mainMenu?.items.first?.submenu?.items.map(\.title).filter { !$0.isEmpty } ?? []
         report["settingsLayer"] = HuskSettings.shared.configText.split(separator: "\n").count
+        // Settings built from Ghostty's options: the schema loads, and a change reaches the config layer.
+        report["settingsOptions"] = HuskConfigSchema.options.count
+        if let opacity = HuskConfigSchema.byName["background-opacity"] {
+            let saved = HuskSettings.shared.overrides
+            HuskSettings.shared.set(opacity, ["0.85"])
+            report["settingsOverrideLine"] = HuskSettings.shared.configText.contains("background-opacity = 0.85")
+            HuskSettings.shared.set(opacity, opacity.effectiveDefault)
+            report["settingsOverrideReset"] = HuskSettings.shared.overrides["background-opacity"] == nil
+            HuskSettings.shared.overrides = saved
+        }
+        // One All Settings row per kind of control (a List doesn't draw its rows offscreen).
+        let sample = ["font-thicken", "cursor-style", "background-opacity", "mouse-scroll-multiplier", "shell-integration-features",
+                      "cursor-color", "font-family", "title", "window-padding-x", "image-storage-limit", "theme"]
+        let all = NSHostingView(rootView: Form { ForEach(sample, id: \.self) { HuskOptionRow($0) } }
+            .formStyle(.grouped).frame(width: 640, height: 900))
+        all.frame = NSRect(x: 0, y: 0, width: 640, height: 900)
+        all.layoutSubtreeIfNeeded()
+        if let rep = all.bitmapImageRepForCachingDisplay(in: all.bounds) {
+            all.cacheDisplay(in: all.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent("all-settings.png"))
+        }
         report["appMemoryMB"] = Int(HuskProcess.residentBytes(pid: getpid()) / 1_048_576)
         report["viewMenuHasSidebar"] = NSApp.mainMenu?.item(withTitle: "View")?.submenu?.item(withTitle: "Show Sidebar") != nil
         report["windowsMenuWindows"] = NSApp.windowsMenu?.items
